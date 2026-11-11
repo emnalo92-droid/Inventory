@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <script>
+      (function() {
+        try {
+          var _origFetch = window.fetch ? window.fetch.bind(window) : undefined;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return _origFetch;
+            },
+            set: function(fn) {
+              _origFetch = fn;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (_) {}
+
+        // Intercept and gracefully handle WebSocket disconnects / errors in dev preview iframes
+        try {
+          if (typeof window !== 'undefined' && window.WebSocket) {
+            var OrigWebSocket = window.WebSocket;
+            window.WebSocket = function(url, protocols) {
+              var ws;
+              try {
+                ws = protocols !== undefined ? new OrigWebSocket(url, protocols) : new OrigWebSocket(url);
+              } catch (e) {
+                return {
+                  addEventListener: function() {},
+                  removeEventListener: function() {},
+                  send: function() {},
+                  close: function() {},
+                  readyState: 3
+                };
+              }
+              ws.addEventListener('error', function(err) {
+                // Gracefully suppress dev HMR socket disconnect errors
+              });
+              return ws;
+            };
+            window.WebSocket.prototype = OrigWebSocket.prototype;
+            window.WebSocket.CONNECTING = OrigWebSocket.CONNECTING;
+            window.WebSocket.OPEN = OrigWebSocket.OPEN;
+            window.WebSocket.CLOSING = OrigWebSocket.CLOSING;
+            window.WebSocket.CLOSED = OrigWebSocket.CLOSED;
+          }
+        } catch (_) {}
+
+        window.addEventListener('error', function(event) {
+          if (
+            (event.filename && event.filename.indexOf('chrome-extension://') !== -1) ||
+            (event.error && event.error.stack && event.error.stack.indexOf('chrome-extension://') !== -1) ||
+            (event.message && (
+              event.message.indexOf('Cannot set property fetch') !== -1 ||
+              event.message.indexOf('WebSocket') !== -1 ||
+              event.message.indexOf('websocket') !== -1
+            ))
+          ) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+      })();
+    </script>
+    <title>Candy Store & Takehome Inventory</title>
+    <meta name="description" content="Production inventory ledger, shift management, cashier reconciliation, and weekly/monthly sales reporting system for candy store and takehome branches." />
+    <meta name="theme-color" content="#0d9488" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/assets/icon-192.svg" />
+    <meta property="og:title" content="Candy Store & Takehome Inventory" />
+    <meta property="og:description" content="Production inventory ledger, shift management, cashier reconciliation, and weekly/monthly sales reporting system for candy store and takehome branches." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

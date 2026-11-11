@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Candy Store & Takehome Inventory",
+  "short_name": "CandyStore",
+  "description": "Production inventory ledger, shift management, cashier reconciliation, and sales reporting system.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#0d9488",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/assets/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

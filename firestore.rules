@@ -1,0 +1,95 @@
+rules_version = '2';
+
+/**
+ * ============================================================================
+ * FIRESTORE OPTIMIZATION & USAGE RULES
+ * ============================================================================
+ * 1. Use limit() and cursor pagination (startAfter) on every query. Never fetch a whole collection.
+ * 2. Use getDoc/getDocs for data that rarely changes. Only use onSnapshot where live updates are truly needed, and unsubscribe when the component unmounts.
+ * 3. Combine multiple field changes into a single updateDoc call.
+ * 4. Debounce user input (e.g. typing, sliders, autosave) so it writes at most once every few seconds, not on every keystroke.
+ * 5. Skip writes when the value hasn't changed.
+ * 6. Cache results on the client (memory or local storage) and avoid refetching on every page load or re-render.
+ * 7. Enable Firestore offline persistence so repeat reads hit the local cache.
+ * 8. Store data that is read together in one document instead of splitting it across many.
+ * 9. Use counters or aggregates (count() queries, or a stored summary field) instead of reading every document to count or total them.
+ * 10. Don't read a document right after writing it. Update the UI from local state.
+ * ============================================================================
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'em.nalo92@gmail.com' && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidInventoryData(data) {
+      return (!('inv' in data) || (data.inv is string && data.inv.size() <= 150)) &&
+             (!('start' in data) || (data.start is string && data.start.size() <= 32)) &&
+             (!('cut' in data) || (data.cut is string && data.cut.size() <= 32)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64)) &&
+             (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 200));
+    }
+
+    function isValidAuditLog(data) {
+      return data.t is string && data.t.size() <= 64 &&
+             data.u is string && data.u.size() <= 100 &&
+             data.act is string && data.act.size() <= 50 &&
+             data.desc is string && data.desc.size() <= 500;
+    }
+
+    // Connection testing doc
+    match /test/{testId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Main inventory state
+    match /inventory_data/{docId} {
+      allow get: if isValidId(docId);
+      allow list: if false;
+      allow create, update: if isValidId(docId) && isValidInventoryData(incoming());
+      allow delete: if isValidId(docId) && isAdmin();
+    }
+
+    // Audit logs
+    match /audit_logs/{logId} {
+      allow get: if isValidId(logId);
+      allow list: if isSignedIn();
+      allow create: if isValidId(logId) && isValidAuditLog(incoming());
+      allow update, delete: if isValidId(logId) && isAdmin();
+    }
+
+    // Active user presence & live concurrency
+    match /presence/{userId} {
+      allow read: if true;
+      allow list: if true;
+      allow create, update, delete: if isValidId(userId);
+    }
+  }
+}

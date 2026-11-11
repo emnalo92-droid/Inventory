@@ -1,0 +1,375 @@
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset='utf-8'>
+<title>Candy Store & Takehome - Server Installation Walkthrough</title>
+<!--[if gte mso 9]>
+<xml>
+ <w:WordDocument>
+  <w:View>Print</w:View>
+  <w:Zoom>100</w:Zoom>
+  <w:DoNotOptimizeForBrowser/>
+ </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+  @page {
+    size: letter;
+    margin: 1in;
+    mso-header-margin: 0.5in;
+    mso-footer-margin: 0.5in;
+  }
+  body {
+    font-family: 'Segoe UI', Calibri, Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+  }
+  .header-box {
+    background-color: #0f766e;
+    color: #ffffff;
+    padding: 24px 28px;
+    border-radius: 8px;
+    margin-bottom: 28px;
+  }
+  .header-box h1 {
+    margin: 0 0 6px 0;
+    font-size: 24pt;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  .header-box p {
+    margin: 0;
+    font-size: 11pt;
+    color: #ccfbf1;
+  }
+  h2 {
+    color: #0f766e;
+    font-size: 15pt;
+    border-bottom: 2px solid #0f766e;
+    padding-bottom: 4px;
+    margin-top: 28px;
+    margin-bottom: 12px;
+  }
+  h3 {
+    color: #0369a1;
+    font-size: 12pt;
+    margin-top: 16px;
+    margin-bottom: 6px;
+  }
+  p, li {
+    font-size: 10.5pt;
+    color: #334155;
+  }
+  ul, ol {
+    margin-top: 4px;
+    margin-bottom: 12px;
+    padding-left: 24px;
+  }
+  li {
+    margin-bottom: 6px;
+  }
+  code {
+    font-family: Consolas, 'Courier New', monospace;
+    background-color: #f1f5f9;
+    color: #0f766e;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 9.5pt;
+    border: 1px solid #e2e8f0;
+  }
+  pre {
+    font-family: Consolas, 'Courier New', monospace;
+    background-color: #0f172a;
+    color: #38bdf8;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 9.5pt;
+    overflow-x: auto;
+    margin: 8px 0 14px 0;
+    line-height: 1.45;
+  }
+  .callout {
+    background-color: #f0fdfa;
+    border-left: 4px solid #0f766e;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout-warning {
+    background-color: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout-info {
+    background-color: #eff6ff;
+    border-left: 4px solid #2563eb;
+    padding: 12px 16px;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 10pt;
+  }
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  th {
+    background-color: #f8fafc;
+    color: #0f766e;
+    font-weight: 600;
+  }
+  .footer-note {
+    margin-top: 40px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 9pt;
+    color: #94a3b8;
+    text-align: center;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 8.5pt;
+  }
+  .badge-success { background-color: #dcfce7; color: #166534; }
+  .badge-warning { background-color: #fef3c7; color: #92400e; }
+</style>
+</head>
+<body>
+
+<div class="header-box">
+  <h1>Candy Store & Takehome Inventory</h1>
+  <p><strong>Windows Host Server & Local Cashier Network Installation Walkthrough</strong></p>
+  <p style="margin-top: 4px; font-size: 9.5pt; opacity: 0.9;">System Administration & In-Store Terminal Deployment Manual</p>
+</div>
+
+<h2>1. Executive Summary & Architecture</h2>
+<p>
+This application is designed to run directly on your store's Windows computer (acting as the <strong>Host Server</strong>). Any computer, laptop, tablet, or smartphone connected to the same in-store Wi-Fi or LAN can access the system via web browser or standalone desktop window.
+</p>
+<table>
+  <tr>
+    <th style="width: 28%;">Component</th>
+    <th>Specification / Details</th>
+  </tr>
+  <tr>
+    <td><strong>Operating System</strong></td>
+    <td>Windows 10 or Windows 11 (64-bit)</td>
+  </tr>
+  <tr>
+    <td><strong>Runtime</strong></td>
+    <td>Node.js 18 LTS or Node.js 20+ LTS (Free from nodejs.org)</td>
+  </tr>
+  <tr>
+    <td><strong>Server Port</strong></td>
+    <td><code>3000</code> (Binds to <code>0.0.0.0</code> for local network listening)</td>
+  </tr>
+  <tr>
+    <td><strong>Network Requirement</strong></td>
+    <td>Local Area Network (Wi-Fi router or Ethernet switch)</td>
+  </tr>
+  <tr>
+    <td><strong>Cashier Clients</strong></td>
+    <td>Google Chrome, Microsoft Edge, Safari (iPad/iPhone), or Firefox</td>
+  </tr>
+</table>
+
+<div class="callout">
+  <strong>Key Benefit:</strong> All branch inventories, shift reconcile records, and cashier logs entered across different devices sync in real time directly to your host computer.
+</div>
+
+<h2>2. Step-by-Step Installation Walkthrough</h2>
+
+<h3>Step 1: Install Node.js on the Host Computer</h3>
+<ol>
+  <li>Open your browser and visit: <a href="https://nodejs.org/" target="_blank"><strong>https://nodejs.org/</strong></a></li>
+  <li>Download the <strong>LTS (Recommended For Most Users)</strong> Windows installer (<code>.msi</code>).</li>
+  <li>Double-click the downloaded file and follow the standard installation wizard:
+    <ul>
+      <li>Accept the License Agreement.</li>
+      <li>Keep the default installation path (<code>C:\Program Files\nodejs\</code>).</li>
+      <li>Leave all standard features checked.</li>
+      <li>Click <strong>Install</strong> and then <strong>Finish</strong>.</li>
+    </ul>
+  </li>
+  <li><em>Verification:</em> Open Command Prompt and type <code>node -v</code>. It should print a version like <code>v18.x.x</code> or <code>v20.x.x</code>.</li>
+</ol>
+
+<h3>Step 2: Place Application Files on Your Computer</h3>
+<ol>
+  <li>Extract or copy the project folder to a permanent location on your PC (for example: <code>C:\CandyStoreApp\</code> or <code>D:\CandyStoreApp\</code>).</li>
+  <li>Ensure the three one-click Windows launcher scripts exist inside the folder:
+    <ul>
+      <li><code>setup-windows.bat</code> — First-time setup & desktop shortcuts</li>
+      <li><code>start-windows-server.bat</code> — Main server launcher with IP detection</li>
+      <li><code>launch-desktop-app.bat</code> — Standalone borderless desktop window</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>Step 3: Run the 1-Click Setup Wizard</h3>
+<ol>
+  <li>Double-click <strong><code>setup-windows.bat</code></strong>.</li>
+  <li>The wizard will automatically perform three operations:
+    <ul>
+      <li><strong>[1/3]</strong> Install required packages (<code>npm install</code>).</li>
+      <li><strong>[2/3]</strong> Compile and build optimized production assets (<code>npm run build</code>).</li>
+      <li><strong>[3/3]</strong> Create two shortcuts directly on your <strong>Windows Desktop</strong>:
+        <br/>&bull; <em>"Candy Store Host Server"</em>
+        <br/>&bull; <em>"Candy Store Desktop App"</em>
+      </li>
+    </ul>
+  </li>
+  <li>Press any key when the setup displays <code>SETUP COMPLETE!</code>.</li>
+</ol>
+
+<h3>Step 4: Configure Windows Defender Firewall (One-Time)</h3>
+<p>
+By default, Windows Firewall protects your computer by blocking incoming network traffic on unfamiliar ports. You must allow Port <code>3000</code> so cashiers on other devices can connect:
+</p>
+<ol>
+  <li>Right-click the Windows <strong>Start</strong> menu button.</li>
+  <li>Select <strong>Terminal (Admin)</strong> or <strong>Command Prompt (Run as Administrator)</strong>.</li>
+  <li>Paste the following command and press <strong>Enter</strong>:</li>
+</ol>
+<pre>netsh advfirewall firewall add rule name="CandyStoreServer" dir=in action=allow protocol=TCP localport=3000</pre>
+<div class="callout">
+  <strong>Result:</strong> Windows will print <code>Ok.</code> Port 3000 is now open for devices on your local store Wi-Fi network!
+</div>
+
+<h3>Step 5: Start the Host Server</h3>
+<ol>
+  <li>Double-click the <strong>"Candy Store Host Server"</strong> shortcut on your Desktop (or run <code>start-windows-server.bat</code>).</li>
+  <li>The server console will open in a green command window:
+    <ul>
+      <li>It confirms Node.js is ready.</li>
+      <li>It discovers and displays your computer's local Wi-Fi / LAN IP addresses.</li>
+      <li>It prints your <strong>Computer Name URL</strong> (e.g. <code>http://STORE-PC:3000</code>).</li>
+      <li>It automatically launches the app window on your screen!</li>
+    </ul>
+  </li>
+</ol>
+<div class="callout-warning">
+  <strong>Important:</strong> Keep this server command window open (or minimized) while the store is operating. If you close this window, the server stops.
+</div>
+
+<h2>3. What to Do If Your IP Address is Automatically Obtained (DHCP)</h2>
+<p>
+If your network router assigns IP addresses automatically, your numeric IP (e.g. <code>192.168.1.15</code>) might change whenever the computer or router restarts. Choose one of these solutions:
+</p>
+
+<h3>Solution A: Use the Computer Name URL (Recommended — Zero Configuration)</h3>
+<p>
+Windows computers broadcast their machine name across the local network. You do not need numbers!
+</p>
+<ul>
+  <li>On <strong>Windows cashier PCs/laptops</strong>, open browser and navigate to:
+    <br/><code>http://&lt;YOUR-COMPUTER-NAME&gt;:3000</code>
+    <br/><em>Example: <code>http://STORE-SERVER:3000</code></em>
+  </li>
+  <li>On <strong>iPads, iPhones, Macs, or Android devices</strong>, navigate to:
+    <br/><code>http://&lt;your-computer-name&gt;.local:3000</code>
+    <br/><em>Example: <code>http://store-server.local:3000</code></em>
+  </li>
+</ul>
+<div class="callout">
+  <strong>Why this works:</strong> Even when the router gives your computer a new IP address, the Computer Name URL stays 100% constant forever.
+</div>
+
+<h3>Solution B: Lock a Fixed (Static) IP in Windows Settings (1 Minute)</h3>
+<ol>
+  <li>Press <kbd>Win + R</kbd>, type <code>cmd</code>, press Enter, and run <code>ipconfig</code> to see your current IP, Subnet Mask, and Default Gateway.</li>
+  <li>Open <strong>Windows Settings</strong> (<kbd>Win + I</kbd>) &rarr; <strong>Network & internet</strong> &rarr; <strong>Wi-Fi</strong> (or Ethernet).</li>
+  <li>Click on your connected network properties.</li>
+  <li>Under <strong>IP assignment</strong>, click <strong>Edit</strong> and select <strong>Manual</strong>.</li>
+  <li>Turn on <strong>IPv4</strong> and enter:
+    <ul>
+      <li><strong>IP address:</strong> <code>192.168.1.100</code> (or your current IP)</li>
+      <li><strong>Subnet prefix length:</strong> <code>24</code> (equivalent to mask <code>255.255.255.0</code>)</li>
+      <li><strong>Gateway:</strong> <code>192.168.1.1</code> (your router IP)</li>
+      <li><strong>Preferred DNS:</strong> <code>8.8.8.8</code> (Google DNS)</li>
+    </ul>
+  </li>
+  <li>Click <strong>Save</strong>. Your server will now permanently hold this exact IP.</li>
+</ol>
+
+<h3>Solution C: Router DHCP Reservation</h3>
+<p>
+Log in to your Wi-Fi router admin panel (usually <code>http://192.168.1.1</code>), open <strong>DHCP Settings &rarr; Address Reservation</strong>, and bind your computer's MAC address to a permanent IP.
+</p>
+
+<h2>4. Connecting Cashier Terminals & Branch Devices</h2>
+<ol>
+  <li>Ensure the cashier device (tablet, phone, or laptop) is connected to the <strong>same store Wi-Fi network</strong> as the host computer.</li>
+  <li>Open Google Chrome, Microsoft Edge, or Safari on the cashier device.</li>
+  <li>Type the Host URL:
+    <pre>http://&lt;COMPUTER-NAME&gt;:3000   OR   http://192.168.1.100:3000</pre>
+  </li>
+  <li>Bookmark the page or tap <strong>"Add to Home Screen"</strong> / <strong>"Install App"</strong>.</li>
+  <li>The cashier can log in with their assigned username and begin recording AM/PM shift inventory and cash reconciliations.</li>
+</ol>
+
+<h2>5. Running in Standalone Desktop Application Window Mode</h2>
+<p>
+You do not need to use a standard web browser with tabs and URL bars:
+</p>
+<ol>
+  <li>Double-click <strong><code>launch-desktop-app.bat</code></strong> (or the Desktop shortcut <em>"Candy Store Desktop App"</em>).</li>
+  <li>This launches Microsoft Edge or Chrome in <strong>Chromium Application Mode</strong> (<code>--app=http://localhost:3000 --window-size=1400,900</code>).</li>
+  <li>The app displays in a sleek, borderless window with its own taskbar icon, maximizing screen real estate for store operations.</li>
+</ol>
+
+<h2>6. Optional: Auto-Start Server When Computer Powers On</h2>
+<ol>
+  <li>Press <kbd>Windows Key + R</kbd> on your keyboard.</li>
+  <li>Type <code>shell:startup</code> and click <strong>OK</strong>. This opens your personal Windows Startup folder.</li>
+  <li>Right-click inside the folder &rarr; <strong>New &rarr; Shortcut</strong>.</li>
+  <li>Browse to your project folder and select <strong><code>start-windows-server.bat</code></strong>.</li>
+  <li>Click <strong>Next</strong> and <strong>Finish</strong>.</li>
+  <li>Now, whenever you power on or restart your computer, the server starts automatically in the background!</li>
+</ol>
+
+<h2>7. Troubleshooting & Frequently Asked Questions</h2>
+<table>
+  <tr>
+    <th style="width: 30%;">Issue</th>
+    <th>Cause & Solution</th>
+  </tr>
+  <tr>
+    <td><strong>Cashier device says "Site cannot be reached"</strong></td>
+    <td>
+      1. Ensure both devices are on the exact same Wi-Fi network.<br/>
+      2. Verify Windows Defender Firewall rule was added (see Step 4).<br/>
+      3. Confirm the green server window is running on the host computer.
+    </td>
+  </tr>
+  <tr>
+    <td><strong>"Port 3000 already in use" error</strong></td>
+    <td>
+      An existing instance of the server is already running. Open Task Manager (<kbd>Ctrl + Shift + Esc</kbd>), look for <code>Node.js</code> under Processes, end the task, and double-click <code>start-windows-server.bat</code> again.
+    </td>
+  </tr>
+  <tr>
+    <td><strong>IP address changed after router rebooted</strong></td>
+    <td>
+      Use the <strong>Computer Name URL</strong> (<code>http://&lt;COMPUTER-NAME&gt;:3000</code>) or follow Solution B above to set a static IP in Windows Settings.
+    </td>
+  </tr>
+</table>
+
+<div class="footer-note">
+  Candy Store & Takehome Inventory System &bull; Production Local Host Server &bull; Port 3000
+</div>
+
+</body>
+</html>

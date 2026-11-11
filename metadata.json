@@ -1,0 +1,6 @@
+{
+  "name": "Candy Store & Takehome Inventory",
+  "description": "Production inventory ledger, shift management, cashier reconciliation, and weekly/monthly sales reporting system for candy store and takehome branches.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

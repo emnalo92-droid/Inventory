@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "InventoryData": {
+      "title": "InventoryData",
+      "description": "Store inventory ledger state and branch configuration",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Document identifier",
+          "maxLength": 128
+        },
+        "inv": {
+          "type": "string",
+          "description": "Active inventory location",
+          "maxLength": 100
+        },
+        "start": {
+          "type": "string",
+          "description": "Period start date",
+          "maxLength": 10
+        },
+        "cut": {
+          "type": "string",
+          "description": "Period cut-off date",
+          "maxLength": 10
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last updated timestamp",
+          "maxLength": 64
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "User who last updated the state",
+          "maxLength": 100
+        }
+      },
+      "required": ["inv", "start", "cut"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Audit trail log record for data modifications",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Log entry identifier",
+          "maxLength": 128
+        },
+        "t": {
+          "type": "string",
+          "description": "ISO timestamp",
+          "maxLength": 64
+        },
+        "u": {
+          "type": "string",
+          "description": "Username or author",
+          "maxLength": 100
+        },
+        "tab": {
+          "type": "string",
+          "description": "Active tab where action occurred",
+          "maxLength": 50
+        },
+        "act": {
+          "type": "string",
+          "description": "Action type",
+          "maxLength": 50
+        },
+        "desc": {
+          "type": "string",
+          "description": "Description of action",
+          "maxLength": 500
+        }
+      },
+      "required": ["t", "u", "act", "desc"]
+    }
+  },
+  "firestore": {
+    "/inventory_data/{docId}": {
+      "schema": "InventoryData",
+      "description": "Global store inventory state, ledger rows, and configuration"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Detailed shift and inventory mutation audit trail"
+    }
+  }
+}

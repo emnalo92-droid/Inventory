@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Candy Store and Takehome Inventory</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3f5f6;--surface:#fff;--text:#1c2528;--muted:#66767b;--border:#d5dcdf;--accent:#0f6b66;--accent-text:#fff;--head:#e8eef0;--calc:#eef6f5;--bad:#b3261e;--grid:#8e9da2}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121719;--surface:#1a2124;--text:#e6ecee;--muted:#8fa0a5;--border:#2f3a3e;--accent:#3fb5ad;--accent-text:#08201f;--head:#232d31;--calc:#1b2a2b;--bad:#ff8a80;--grid:#5d7077}}
+:root[data-theme="dark"]{--bg:#121719;--surface:#1a2124;--text:#e6ecee;--muted:#8fa0a5;--border:#2f3a3e;--accent:#3fb5ad;--accent-text:#08201f;--head:#232d31;--calc:#1b2a2b;--bad:#ff8a80;--grid:#5d7077}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{padding:16px 12px 32px}
+h1{font-size:22px;margin:0;font-weight:600;letter-spacing:-.01em}
+h2{font-size:15px;margin:22px 0 8px;font-weight:600}h2 span{color:var(--muted);font-weight:400;margin-left:8px}
+.sub{color:var(--muted);margin:2px 0 14px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;overflow-x:auto}
+.tab{background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);font:inherit;font-weight:500;padding:9px 14px;cursor:pointer;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.bar .grow{flex:1}
+button.btn{font:inherit;font-weight:500;padding:7px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer}
+button.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;max-width:620px;margin-bottom:14px}
+.card h2{margin:0 0 10px}
+.row{display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+.card input,.card select{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;width:100%}
+.loc{display:flex;gap:6px;margin-bottom:6px}
+.scroll{overflow:hidden;background:var(--surface);border:0;border-radius:0}
+table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:clamp(8px,.78vw,13px)}
+th,td{padding:3px 2px;border:1px solid var(--grid);text-align:left;overflow:hidden}
+th{background:var(--head);font-weight:600;font-size:.92em;line-height:1.25;padding:7px 3px;vertical-align:bottom;word-break:break-word;text-align:center}
+td input,td select{width:100%;min-width:0;font:inherit;color:var(--text);background:transparent;border:1px solid transparent;border-radius:4px;padding:3px 2px;text-overflow:ellipsis}
+td input:hover,td select:hover{border-color:var(--border)}
+td input:focus,td select:focus{background:var(--bg)}
+td input[type=number]{-moz-appearance:textfield;appearance:textfield}
+td input[type=number]::-webkit-inner-spin-button,td input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+td input[type=date]{padding:3px 0}
+.q,td input.q{text-align:center}
+.a,td input.a{text-align:right;font-variant-numeric:tabular-nums}
+td.a{padding-right:6px}
+td.c{background:var(--calc);font-weight:500}
+.neg{color:var(--bad)}
+tfoot td{font-weight:600;background:var(--head);padding:6px 4px}
+.x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:1.5em;line-height:1;padding:0 2px}
+.x:hover{color:var(--bad)}
+.note{color:var(--muted);font-size:12.5px;margin:10px 2px 0;max-width:90ch}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+td input.ci{text-align:left}
+#dd{position:fixed;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:260px;overflow:auto;font-size:13px;padding:4px}
+.opt{padding:6px 8px;border-radius:6px;cursor:pointer}.opt.on,.opt:hover{background:var(--head)}.opt small{display:block;color:var(--muted)}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px}
+.who{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted)}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100}.ov .card{margin:0;max-width:420px}
+tr.dtot td{background:var(--head);font-weight:600;padding:5px 4px;}tr.dtot td.tl{text-align:left}
+.gt{margin-bottom:.5cm}
+.hd{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;margin-bottom:-1px;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+.hd+.gt{border-top:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
+.who select{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 8px}
+.card textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin:8px 0}
+td input[type=checkbox]{width:auto;min-width:0}
+.cb{display:inline-flex;align-items:center;gap:4px;margin-right:12px;white-space:nowrap}
+.cb.rb{display:flex;white-space:normal;margin-right:0}
+tr.cat td{background:var(--calc);font-weight:600;padding:5px 6px}
+[data-edit][inert]{opacity:.6}
+label.d{display:flex;gap:6px;align-items:center;color:var(--muted)}
+label.d input[type=date],label.d select{font:inherit;padding:6px 8px;border:1px solid var(--grid);border-radius:6px;background:var(--surface);color:var(--text)}
+.cashwrap{display:inline-block;min-width:340px;margin:.5cm 0 14px}
+.osw{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap;margin-top:.5cm}.osl,.osr{flex:0 0 auto;max-width:100%}.osw h2{margin-top:10px}.osw .scroll{display:inline-block;max-width:100%;overflow-x:auto}.osw table{table-layout:auto;width:auto}.osw th,.osw td{padding:4px 12px;white-space:nowrap}.osw td.a{text-align:right;font-variant-numeric:tabular-nums}
+.cashwrap table{table-layout:auto;width:100%}.cashwrap td{padding:5px 10px}.cashwrap td.a{text-align:right;min-width:140px}
+details.hist{margin-top:18px}
+details.hist>summary{cursor:pointer;font-weight:600;padding:6px 0}
+tr.tt td{background:var(--head);font-weight:600}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap" id="app" hidden>
+  <div class="top"><div><h1>Candy Store and Takehome Inventory</h1><p class="sub" id="sub"></p></div><div class="who"><span id="whoName"></span><button class="btn" id="pwBtn">Change password</button><button class="btn" id="outBtn">Sign out</button></div></div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+
+  <section id="p-users" hidden>
+    <div class="bar" data-edit="a"><button class="btn primary" id="addUser">Add user</button><span id="uMsg" class="note" style="margin:0"></span></div>
+    <div id="ub" data-edit="a"></div>
+    <p class="note">Users sign in with their username and password; passwords are stored as a salted hash and are never shown, so leave a Password box empty to keep it. Access: tick All to let a user change everything; otherwise tick what they may do: View Only (look at data but not edit it), and Inventory Location, Start Date or Cut Off Date (may change that setting). Restrictions block one of those changes even for a user with All access. Only users with All Location, All access and no restrictions (administrators) can manage User Access, the Locations list and Cashier Names, and only they can delete data (one line or all) and change history. This sign-in protects the page in this browser only; it is not a substitute for a secured server.</p>
+  </section>
+
+  <section id="p-setup" hidden>
+    <div class="card"><h2>Inventory period</h2>
+      <div class="row" data-edit="l"><label for="inv">Inventory Location</label><select id="inv"></select></div>
+      <div class="row" data-edit="s"><label for="start">Start Date</label><input type="date" id="start"></div>
+      <div class="row" data-edit="c"><label for="cut">Cut Off Date</label><input type="date" id="cut"></div>
+    </div>
+    <div class="card" data-edit="a"><h2>Locations</h2><div id="locs"></div>
+      <div class="bar"><button class="btn primary" id="addLoc">Add location</button><span class="grow"></span><button class="btn" id="reset">Restore sample data</button></div>
+    </div>
+    <div class="card" data-edit="a"><div id="cshr"></div><div class="bar" style="margin:10px 0 0"><button class="btn primary" id="addCsh">Add cashier</button></div></div>
+  </section>
+
+  <section id="p-acct" hidden><div class="card"><h2>Change password</h2>
+    <div class="row"><label for="pwOld">Current password</label><input type="password" id="pwOld" autocomplete="current-password"></div>
+    <div class="row"><label for="pwNew">New password</label><input type="password" id="pwNew" autocomplete="new-password"></div>
+    <div class="row"><label for="pwNew2">Repeat new password</label><input type="password" id="pwNew2" autocomplete="new-password"></div>
+    <div class="bar" style="margin:0"><button class="btn primary" id="pwGo">Update password</button><span id="pwMsg" class="note" style="margin:0"></span></div></div></section>
+
+  <section id="p-cash" hidden>
+    <div class="bar"><button class="btn" id="csx">Export (Download)</button><span id="csMsg" class="note" style="margin:0"></span></div>
+    <div id="cs" data-edit="d"></div>
+    <p class="note">All amounts are peso values: each quantity encoded in Data Entry multiplied by its SRP, added up for the week. Beginning Inventory = the previous week's Actual Ending Inventory (plus the opening quantity of any item first entered that week). Total Available = Beginning Inventory + Deliveries + Stock Withdrawal + Transfer FROM. Total to be deducted = Transfer TO + Bad Order. Total Net Available = Total Available − Total to be deducted. Actual Ending Inventory = the week's ending inventory. Should be - Sales is the Grand Total Sales of that Weekly Summary, Cash on Hand is the Cash on Hand of that Weekly Summary, and Variances (over/short) = Cash on Hand − Should be - Sales. Cashier Payment is typed in; Balance = Variances + Cashier Payment. The Summary column covers the whole period: Beginning from Week 1, Actual Ending from the last week, and the other rows added up.</p>
+  </section>
+
+  <section id="p-deny" hidden><div class="card"><h2>No access</h2><p id="denyMsg"></p></div></section>
+
+  <section id="p-master" hidden>
+    <div class="bar"><button class="btn primary" id="addItem" data-edit="d">Add item</button><button class="btn" id="impBtn" data-edit="d">Import (Upload)</button><button class="btn" id="expBtn">Export (Download)</button><button class="btn adm" id="delAllItems" hidden>Delete all items</button><span id="mMsg" class="note" style="margin:0"></span></div>
+    <div class="card" id="impBox" data-edit="d" hidden><h2>Import items</h2><p class="note" style="margin-top:0">Choose an Excel file (.xlsx) with the header row, or paste rows copied from Excel. Lines whose Line No. already exists are updated; the others are added. Use Export to get an Excel file in the right layout.</p>
+      <input type="file" id="impFile" accept=".xlsx,.xls,.csv"><textarea id="impTxt" rows="5" placeholder="Or paste rows here"></textarea>
+      <div class="bar" style="margin:0"><button class="btn primary" id="impGo">Import items</button><button class="btn" id="impCancel">Close</button></div></div>
+    <div id="mb" data-edit="d"></div>
+    <p class="note">Changes save automatically in this browser. A price change gets its own line (same item code, new SRP). Data Entry pulls the SRP from the line you pick. There is one Item Master for every location: all items appear in the Data Entry search at every Inventory Location. Unit Cost is calculated automatically: Delivery Cost ÷ Conversion.</p>
+  </section>
+
+  <section id="p-entry" hidden>
+    <div class="bar"><label class="d">Date <input type="date" id="vd"></label><label class="d">Shift <select id="vtf" aria-label="Shift (AM or PM Shift)"><option value="AM">AM Shift</option><option value="PM">PM Shift</option></select></label><button class="btn" id="vPrev" aria-label="Previous day">‹</button><button class="btn" id="vNext" aria-label="Next day">›</button><button class="btn primary" id="addRow" data-edit="d">Add row</button><button class="btn" id="deImp" data-edit="d">Import (Upload)</button><button class="btn" id="deExp">Export (Download)</button><button class="btn adm" id="delAllRows" hidden>Delete all entries</button><span id="eMsg" class="note" style="margin:0"></span><input type="file" id="deFile" accept=".xlsx,.xls,.csv" hidden></div>
+    <div id="eb" data-edit="d"></div>
+    <p class="note">Pick a Date to see only the entries for that date. Shift beside the Date switches between the AM Shift and PM Shift entries of that date. Each shift keeps its own rows, totals and Cash Details, and a PM Shift row's Beginning Inventory comes from the AM Shift's Ending Inventory. Export (Download) adds a Shift column and Import (Upload) reads it (rows without one are treated as AM Shift). Picking a date automatically lists every item whose previous Ending Inventory is more than zero, with that quantity as its Beginning Inventory. Carried-over rows stay saved; use × to remove an item you don't want listed. Dates outside the Start and Cut Off dates don't carry items forward. Items are grouped by category (A to Z) with a Total after each category and a Grand Total at the bottom. Search the Item Description by name, code, category or SRP. Month Week Number counts 7-day weeks from the Start Date. Total Goods Available = Beginning + Deliveries + Transfer from + Internal Transfer From − Transfer To − Internal Transfer To. Total Goods Sold = Total Goods Available − Ending Inventory, so a blank or 0 Ending Inventory means the item sold out: Total Goods Sold equals Total Goods Available, and the box shows "Sold out". Total Sales = Total Goods Sold × SRP. Price-change totals turn red if out and in don't match. The column headings stay frozen while you scroll. Add row starts a blank row on the picked date. Cash Details sit below the table: Should be Sales is the date's total sales (the sum of the category totals), Cash on Hand is typed in, and Over/Short = Cash on Hand − Should be Sales. Import (Upload) adds entries from an Excel file in the same columns as Export (Download), matching each Item Description (and SRP) to the Item Master; Total rows in the file are ignored.</p>
+  </section>
+
+  <section id="p-summary" hidden><div class="bar"><button class="btn" id="sxBtn">Export (Download)</button><span id="sMsg" class="note" style="margin:0"></span></div><div id="sm"></div>
+    <p class="note">The column headings stay frozen at the top while you scroll. Each week tab groups Item Master lines by category, with a Total row per category. Beginning comes from a line's first entry in the week, Ending from its last entry, and the other quantities are added up. The Monthly Summary covers the whole period from the Start Date to the Cut Off Date: Beginning comes from the first day and Ending from the cut off date. Cash Details: Should be Sales is the sum of the category Total Sales shown above, Cash on Hand adds up the daily cash typed in Data Entry for those dates, and Over/Short = Cash on Hand − Should be Sales.</p>
+  </section>
+</div>
+
+<div id="login" class="wrap" hidden><h1>Candy Store and Takehome Inventory</h1><p class="sub">Sign in to continue.</p>
+  <div class="card"><h2>Sign in</h2>
+    <div class="row"><label for="lgUser">Username</label><input id="lgUser" type="text" autocomplete="username"></div>
+    <div class="row"><label for="lgPw">Password</label><input id="lgPw" type="password" autocomplete="current-password"></div>
+    <div class="bar" style="margin:0"><button class="btn primary" id="lgGo">Sign in</button><span id="lgErr" class="neg"></span></div>
+    <div class="bar" style="margin:10px 0 0"><button class="btn" id="lgReset" hidden>Restore sample data</button></div></div></div>
+<div id="ask" class="ov" hidden><div class="card"><p id="askMsg"></p><div class="bar" style="margin:0"><button class="btn primary" id="askYes">Confirm</button><button class="btn" id="askNo">Cancel</button></div></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const KEY='inv_ledger_v1',V=6,MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+const num=v=>parseFloat(v)||0;
+const f2=v=>num(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const acct=v=>{v=num(v);return v===0?'-':v<0?'-'+f2(-v):f2(v)};
+const q=v=>num(v)===0?'':num(v).toLocaleString('en-US',{maximumFractionDigits:2});
+const raw=v=>num(v)===0?'':v;
+const fd=d=>d?`${+d.slice(8)}-${MON[+d.slice(5,7)-1]}-${d.slice(2,4)}`:'';
+const addDay=(d,n)=>{const t=new Date(d+'T00:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)};
+const today=()=>new Date().toISOString().slice(0,10);
+const R=(no,date,o)=>({no,date,beg:'',del:'',wd:'',tf:'',tfl:'',itf:'',tt:'',ttl:'',itt:'',bad:'',end:'',doc:'',fr:'AM',...o});
+const I=(no,code,sys,desc,cat,srp,deliv,conv,wd)=>({no,code,sys,desc,cat,srp,loc:'Pastry',vat:'VAT',deliv,conv,wd,cv:1});
+const seed=()=>({v:V,log:[],locs:['YTMI Takehome','YTP Takehome','Logistics Takehome','Commissary Takehome'],inv:'Commissary Takehome',start:'2026-10-05',cut:'2026-10-31',
+ items:[I(1,'FGPS00005','Pastry Bread - Asado Roll','Asado Roll','Breads',10,5,5,3.5),I(2,'FGBC00054','Pastry Bread - Cheese Custard Cupcake','Cheese Custard Cupcake','Cakes',15,8,8,6),
+  I(3,'FGPS00005','Pastry Bread - Asado Roll','Asado Roll','Breads',20,5,5,3.5),I(4,'FGBC00054','Pastry Bread - Cheese Custard Cupcake','Cheese Custard Cupcake','Cakes',25,8,8,6)],
+ rows:[R(1,'2026-10-05',{beg:25,del:15,wd:5,tf:2,tfl:'YTMI Takehome',tt:2,ttl:'Logistics Takehome',bad:5,end:38}),R(1,'2026-10-06',{end:36}),R(1,'2026-10-07',{end:30}),R(1,'2026-10-08',{itt:30}),
+  R(2,'2026-10-12',{beg:10,del:25,wd:5,tf:2,tfl:'YTP Takehome',tt:2,ttl:'Commissary Takehome',bad:8,end:30}),R(2,'2026-10-13',{end:27}),R(2,'2026-10-14',{end:23}),R(2,'2026-10-15',{itt:23}),
+  R(3,'2026-10-16',{itf:30,end:30}),R(4,'2026-10-16',{itf:23,end:23})].map(r=>({...r,loc:'Commissary Takehome'})),
+ cash:{'Commissary Takehome|2026-10-05':35},cashiers:['Lica Cudiamat','Marlyn Maruya','Godelyn Roncales'],cinfo:{'Commissary Takehome|2026-10-05':{cashier:'Lica Cudiamat',shift:'A'}},users:[{id:1,name:'Ervin Nalo',all:true,locs:[],acc:['All'],res:[],user:'enalo',salt:'inv-enalo-7f3a91c2',hash:'859bf38bf87191f4341612af7bc3a7385a07e14005f7bbed9dfddefe524116cc'},{id:2,name:'Railyn Perin',all:false,locs:['YTMI Takehome','YTP Takehome'],acc:['All'],res:[],user:'rperin',salt:'inv-rperin-c91d40e8',hash:'f6c732ca58c6bfff91f4f56609587599b85be02f11a8e481c1f078eb57eff6a0'},{id:3,name:'Jennalyn Martinez',all:true,locs:[],acc:['View Only','Inventory Location','Start Date','Cut Off Date'],res:[],user:'jmartinez',salt:'inv-jmartinez-5be2a7d1',hash:'b0c47e49a5b96df506d905eacba8ace97ea4c7bbe69e1f812d38ebf333f062e9'},{id:4,name:'',all:false,locs:[],acc:[],res:[],user:'',salt:'',hash:''}]});
+let S;try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}
+if(S&&(S.v===3||S.v===4)){const d=seed();if(S.v===3)S.users=d.users;else S.users.forEach(u=>{const m=d.users.find(x=>x.id===u.id);if(m&&!u.hash)Object.assign(u,{user:m.user,salt:m.salt,hash:m.hash})});S.rows.forEach(r=>{r.loc=r.loc||S.inv});delete S.me;S.v=V}
+if(S&&S.v===5){const d=seed(),u=S.users.find(x=>x.id===3);if(u&&!u.name&&!u.user)Object.assign(u,d.users[2]);S.users.forEach(x=>{if(x.res==='View only')x.res='View Only'});S.v=V}
+if(!S||S.v!==V)S=seed();
+S.cash=S.cash||{};S.log=S.log||[];
+S.items.forEach(x=>{delete x.inv});
+S.cpay=S.cpay||{};
+S.cashiers=S.cashiers||['Lica Cudiamat','Marlyn Maruya','Godelyn Roncales'];
+if(!S.cinfo){S.cinfo={};if(S.cash['Commissary Takehome|2026-10-05']!==undefined)S.cinfo['Commissary Takehome|2026-10-05']={cashier:'Lica Cudiamat',shift:'A'}}
+Object.values(S.cinfo).forEach(c=>{if(c.shift&&!/^[AB]$/.test(c.shift))c.shift=''});
+S.rows.forEach(r=>{if(r.fr!=='AM'&&r.fr!=='PM')r.fr=((S.cinfo[r.loc+'|'+r.date]||{}).frame==='PM')?'PM':'AM'});
+Object.keys(S.cinfo).forEach(k=>{const c=S.cinfo[k];if(c&&c.frame){if(c.frame==='PM'&&!k.endsWith('|PM')){S.cinfo[k+'|PM']=c;delete S.cinfo[k];if(S.cash[k]!==undefined){S.cash[k+'|PM']=S.cash[k];delete S.cash[k]}}delete c.frame}});
+if(S.vf!=='PM')S.vf='AM';
+S.users.forEach(u=>{u.res=u.res.map(x=>x==='Changing '+'Locations'?'Changing Inventory Location':x==='Changing '+'Date Ranges'?'Changing Start Date and Inventory Date':x)});
+S.users.forEach(u=>{if(!Array.isArray(u.res))u.res=(u.res&&u.res!=='None')?[u.res]:[];if(u.name==='Jennalyn Martinez'&&u.res.length===1&&u.res[0]==='View Only')u.res=['View Only','Changing Inventory Location','Changing Start Date and Inventory Date']});
+S.users.forEach(u=>{if(Array.isArray(u.acc))return;const r=u.res||[];if(!u.name&&!u.user){u.acc=[];u.res=[]}else if(r.includes('View Only')){u.acc=['View Only','Inventory Location','Start Date','Cut Off Date'];u.res=[]}else{u.acc=['All'];u.res=r.flatMap(x=>/Inventory Location|Locations/.test(x)?['Inventory Location']:/Date/.test(x)?['Start Date','Cut Off Date']:[])}});
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const item=no=>S.items.find(x=>x.no==no);
+const hdr=(h,w)=>'<tr>'+h.map((t,j)=>`<th style="width:${w[j]}%">${t}</th>`).join('')+(w.length>h.length?`<th style="width:${w[h.length]}%"></th>`:'')+'</tr>';
+const upSub=()=>{$('sub').textContent=`${S.inv}  |  ${fd(S.start)} to ${fd(S.cut)}`;buildMe();buildTabs()};
+const inP=d=>!!d&&d>=S.start&&d<=S.cut;
+const weekOf=d=>!d?'':inP(d)?'Week '+(Math.floor(Math.round((Date.parse(d)-Date.parse(S.start))/864e5)/7)+1):'Other period';
+const dcmp=(a,b)=>{a=a||'~';b=b||'~';return a<b?-1:a>b?1:0};
+const catOfRow=r=>{const it=item(r.no);return it?(it.cat||'Uncategorized'):''};
+const fo=r=>r.fr==='PM'?1:0;
+const rowCmp=(a,b)=>dcmp(a.date,b.date)||fo(a)-fo(b)||((item(a.no)?0:1)-(item(b.no)?0:1))||catOfRow(a).localeCompare(catOfRow(b))||String((item(a.no)||{}).desc||'').localeCompare(String((item(b.no)||{}).desc||''))||(Number(a.no)-Number(b.no))||0;
+const blankRow=r=>['del','wd','tf','itf','tt','itt','bad','end'].every(k=>r[k]===''||r[k]===undefined||r[k]===null)&&!r.tfl&&!r.ttl&&!r.doc;
+const prune=()=>{};
+const defView=()=>{const d=S.rows.filter(r=>r.loc===S.inv&&r.date).map(r=>r.date).sort();return d.length?d[d.length-1]:(S.start||today())};
+function carry(d,f){if(!S.start||d<S.start||d>S.cut)return;f=f==='PM'?'PM':'AM';let n=0;const last={};S.rows.filter(r=>r.loc===S.inv&&r.no!==''&&r.date&&(r.date<d||(f==='PM'&&r.date===d&&r.fr==='AM'))).sort((a,b)=>dcmp(a.date,b.date)||fo(a)-fo(b)).forEach(r=>{last[r.no]=num(r.end)});
+  Object.keys(last).map(Number).forEach(no=>{if(last[no]>0&&!(S.nc&&S.nc[S.inv+'|'+d+(f==='PM'?'|PM':'')+'|'+no])&&!S.rows.some(r=>r.loc===S.inv&&r.date===d&&r.fr===f&&r.no===no)){S.rows.push(R(no,d,{loc:S.inv,gen:true,fr:f}));n++}});if(n)logc('entry','Carried over',`${n} item(s) listed on ${fd(d)} (${f} Shift) from the previous Ending Inventory`,d)}
+prune();S.rows.sort(rowCmp);
+const val=t=>(t.type==='number'||t.dataset.acc!=null)?(t.value.trim()===''?'':(isNaN(parseFloat(t.value.replace(/,/g,'')))?'':parseFloat(t.value.replace(/,/g,'')))):t.value;
+
+/* ---------- Setup ---------- */
+function renderSetup(){renderCashiers();
+  const ok=S.locs.filter(l=>canLoc(me(),l));$('inv').innerHTML=(ok.includes(S.inv)?'':'<option value="" selected disabled>Choose a location</option>')+ok.map(l=>`<option${l===S.inv?' selected':''}>${esc(l)}</option>`).join('');
+  $('start').value=S.start;$('cut').value=S.cut;
+  $('locs').innerHTML=S.locs.map((l,i)=>`<div class="loc"><input type="text" data-l="${i}" value="${esc(l)}" aria-label="Location name"><button class="btn" data-dl="${i}">Remove</button></div>`).join('');
+}
+$('inv').onchange=e=>{logc('setup','Changed',`Inventory Location: "${S.inv}" → "${e.target.value}"`);S.inv=e.target.value;save();upSub()};
+$('start').onchange=e=>{logc('setup','Changed',`Start Date: ${fd(S.start)} → ${fd(e.target.value)}`);S.start=e.target.value;save();upSub()};
+$('cut').onchange=e=>{logc('setup','Changed',`Cut Off Date: ${fd(S.cut)} → ${fd(e.target.value)}`);S.cut=e.target.value;save();upSub()};
+$('locs').addEventListener('change',e=>{const i=e.target.dataset.l;if(i==null)return;const o=S.locs[i],n=e.target.value.trim();if(!n){renderSetup();return}
+  S.rows.forEach(r=>{if(r.tfl===o)r.tfl=n;if(r.ttl===o)r.ttl=n;if(r.loc===o)r.loc=n});Object.keys(S.cash).forEach(k=>{if(k.startsWith(o+'|')){S.cash[n+'|'+k.slice(o.length+1)]=S.cash[k];delete S.cash[k]}});Object.keys(S.cinfo).forEach(k=>{if(k.startsWith(o+'|')){S.cinfo[n+'|'+k.slice(o.length+1)]=S.cinfo[k];delete S.cinfo[k]}});S.users.forEach(u=>{u.locs=u.locs.map(x=>x===o?n:x)});Object.keys(S.cpay).forEach(k=>{if(k.startsWith(o+'|')){S.cpay[n+'|'+k.slice(o.length+1)]=S.cpay[k];delete S.cpay[k]}});if(S.inv===o)S.inv=n;S.locs[i]=n;logc('setup','Changed',`Location renamed: "${o}" → "${n}"`);save();renderSetup();upSub()});
+$('locs').addEventListener('click',e=>{const d=e.target.dataset.dl;if(d==null)return;const o=S.locs[d];logc('setup','Deleted',`Location removed: ${o}`);S.locs.splice(d,1);S.users.forEach(u=>{u.locs=u.locs.filter(x=>x!==o)});if(S.inv===o)S.inv=S.locs[0]||'';save();renderSetup();upSub()});
+$('addLoc').onclick=()=>{S.locs.push('New location');logc('setup','Added','Location added: New location');save();renderSetup();const a=$('locs').querySelectorAll('input');a[a.length-1].select()};
+function renderCashiers(){const W=[88,12];
+  $('cshr').innerHTML=stickyH(['Cashier Names'],W)+`<div class="scroll gt"><table>${colg(W)}<tbody>${S.cashiers.map((n,i)=>`<tr><td><input type="text" data-cn="${i}" value="${esc(n)}" aria-label="Cashier name"></td><td><button class="x" data-dc="${i}" title="Remove cashier" aria-label="Remove cashier">×</button></td></tr>`).join('')||'<tr><td class="empty" colspan="2">No cashier names yet. Select Add cashier.</td></tr>'}</tbody></table></div>`}
+$('cshr').addEventListener('change',e=>{const i=e.target.dataset.cn;if(i==null)return;const o=S.cashiers[i],n=e.target.value.trim();if(!n){renderCashiers();return}
+  Object.values(S.cinfo).forEach(c=>{if(c.cashier===o)c.cashier=n});S.cashiers[i]=n;logc('setup','Changed',`Cashier renamed: "${o}" → "${n}"`);save();renderCashiers()});
+$('cshr').addEventListener('click',e=>{const d=e.target.dataset.dc;if(d==null)return;logc('setup','Deleted',`Cashier removed: ${S.cashiers[d]}`);S.cashiers.splice(d,1);save();renderCashiers()});
+$('addCsh').onclick=()=>{S.cashiers.push('New cashier');logc('setup','Added','Cashier added: New cashier');save();renderCashiers();const a=$('cshr').querySelectorAll('input');if(a.length)a[a.length-1].select()};
+$('reset').onclick=async()=>{if(await ask('Replace all settings, users, items and entries with the sample data? Everyone will need to sign in again.')){logc('setup','Restored sample data','All settings, users, items and entries were replaced with the sample data');const lg=S.log;S=seed();S.log=lg;save();setSess(null);boot()}};
+
+/* ---------- Item Master ---------- */
+const MC=['Line No.','Item Code','System Description','Item Description','Category','SRP','Item Location','Cost Type VAT/NVAT','Delivery Cost','Stock Withdrawal Cost','Conversion','Unit Cost'];
+const MW=[4,9,15,13,7,7,8,7,7,8,6,6,3];
+const unit=it=>num(it.cv)>0?num(it.deliv)/num(it.cv):0;
+const ucell=it=>num(it.cv)>0?acct(unit(it)):'';
+function renderMaster(){
+  const T=(i,k,v)=>`<td><input type="text" data-i="${i}" data-k="${k}" value="${esc(v)}"></td>`;
+  const A=(i,k,v)=>`<td><input type="text" inputmode="decimal" class="a" data-acc data-i="${i}" data-k="${k}" value="${acct(v)}"></td>`;
+  const rowsH=S.items.length?S.items.map((it,i)=>`<tr><td class="q">${it.no}</td>${T(i,'code',it.code)}${T(i,'sys',it.sys)}${T(i,'desc',it.desc)}${T(i,'cat',it.cat)}${A(i,'srp',it.srp)}${T(i,'loc',it.loc)}
+   <td><select data-i="${i}" data-k="vat"><option${it.vat==='VAT'?' selected':''}>VAT</option><option${it.vat==='NVAT'?' selected':''}>NVAT</option></select></td>
+   ${A(i,'deliv',it.deliv)}${A(i,'wd',it.wd)}<td><input type="number" step="any" class="q" data-i="${i}" data-k="cv" value="${esc(raw(it.cv))}"></td><td class="c a" data-unit="${i}">${ucell(it)}</td>
+   <td>${canAdm()?`<button class="x" data-del="${i}" title="Delete item" aria-label="Delete item ${it.no}">×</button>`:''}</td></tr>`).join(''):`<tr><td class="empty" colspan="13">No items yet. Select Add item to create the first one.</td></tr>`;
+  $('mb').innerHTML=stickyH(MC,MW)+`<div class="scroll gt"><table>${colg(MW)}<tbody>${rowsH}</tbody></table></div>`;
+}
+$('mb').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;S.items[i][t.dataset.k]=val(t);save();const c=$('mb').querySelector(`[data-unit="${i}"]`);if(c)c.textContent=ucell(S.items[i])});
+$('mb').addEventListener('focusin',e=>{const t=e.target;if(t.dataset.acc!=null){const v=S.items[t.dataset.i][t.dataset.k];t.value=num(v)===0?'':v;t.select()}});
+$('mb').addEventListener('focusout',e=>{const t=e.target;if(t.dataset.acc!=null)t.value=acct(S.items[t.dataset.i][t.dataset.k])});
+$('mb').addEventListener('click',async e=>{const d=e.target.dataset.del;if(d==null||!canAdm())return;const it=S.items[d];if(await ask(`Delete line ${it.no} (${it.desc||it.sys||'blank'})? Data Entry rows using it will become blank.`)){logc('master','Deleted',`Line ${it.no} (${it.desc||it.sys||'blank'}, SRP ${f2(it.srp)}) deleted`);S.items.splice(d,1);save();renderMaster()}});
+$('addItem').onclick=()=>{const no=S.items.reduce((m,x)=>Math.max(m,x.no),0)+1;S.items.push({no,code:'',sys:'',desc:'',cat:'',srp:0,loc:'',vat:'VAT',deliv:0,conv:0,wd:0,cv:1});logc('master','Added',`Line ${no} added`);save();renderMaster();const tr=$('mb').querySelectorAll('tbody tr'),r=tr[tr.length-1]&&tr[tr.length-1].querySelector('input');if(r)r.focus()};
+
+/* ---------- Item Master import / export ---------- */
+const MK=['no','code','sys','desc','cat','srp','loc','vat','deliv','wd','cv'];
+const HK={lineno:'no',itemcode:'code',systemdescription:'sys',itemdescription:'desc',category:'cat',srp:'srp',itemlocation:'loc',costtypevatnvat:'vat',costtype:'vat',deliverycost:'deliv',stockwithdrawalcost:'wd',conversion:'cv'};
+const note=t=>{$('mMsg').textContent=t};
+const csvQ=v=>{v=String(v??'');return /[",\n\t]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+const toCsv=()=>'\ufeff'+[MC,...S.items.map(it=>[...MK.map(k=>it[k]),unit(it)])].map(r=>r.map(csvQ).join(',')).join('\r\n');
+function parseCsv(t){t=t.replace(/^\ufeff/,'');const d=(t.split(/\r?\n/)[0]||'').includes('\t')?'\t':',',rows=[];let r=[],f='',inq=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(inq){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else inq=false}else f+=c}
+    else if(c==='"')inq=true;else if(c===d){r.push(f);f=''}else if(c==='\n'){r.push(f);rows.push(r);r=[];f=''}else if(c!=='\r')f+=c}
+  if(f!==''||r.length){r.push(f);rows.push(r)}
+  return rows.filter(r=>r.some(x=>x.trim()!==''))}
+function importItems(txt){
+  let rows=typeof txt==='string'?parseCsv(txt):txt;rows=rows.filter(r=>r.some(x=>String(x??'').trim()!==''));if(!rows.length)return 'Nothing to import. Paste rows or choose a file first.';
+  let cols=rows[0].map(h=>HK[String(h??'').toLowerCase().replace(/[^a-z]/g,'')]),st=1;
+  if(!cols.some(Boolean)){cols=MK;st=0}
+  if(!cols.includes('desc')&&!cols.includes('code'))return 'The header row needs an Item Code or Item Description column.';
+  let up=0,add=0;
+  for(const r of rows.slice(st)){const o={};cols.forEach((k,j)=>{if(k&&r[j]!==undefined)o[k]=String(r[j]).trim()});
+    if(!(o.code||o.desc||o.sys))continue;
+    ['srp','deliv','conv','wd','cv'].forEach(k=>{if(k in o){const n=parseFloat(String(o[k]).replace(/[^0-9.\-]/g,''));o[k]=isNaN(n)?0:n}});
+    if(o.vat)o.vat=/^n/i.test(o.vat)?'NVAT':'VAT';
+    const ln=parseInt(o.no);delete o.no;const ex=isNaN(ln)?null:S.items.find(x=>x.no===ln);
+    if(ex){Object.assign(ex,o);up++}
+    else{const no=ln>0&&!S.items.some(x=>x.no===ln)?ln:S.items.reduce((m,x)=>Math.max(m,x.no),0)+1;S.items.push({no,code:'',sys:'',desc:'',cat:'',srp:0,loc:'',vat:'VAT',deliv:0,conv:0,wd:0,cv:1,...o});add++}}
+  S.items.sort((a,b)=>a.no-b.no);save();renderMaster();return `Imported: ${up} updated, ${add} added.`}
+let pend=null;
+const closeImp=()=>{$('impBox').hidden=true;$('impTxt').value='';$('impFile').value='';pend=null};
+$('impBtn').onclick=()=>{$('impBox').hidden=!$('impBox').hidden};
+$('impCancel').onclick=closeImp;
+$('impFile').onchange=e=>{const f=e.target.files[0];if(!f)return;pend=null;const xl=/\.xlsx?$/i.test(f.name),rd=new FileReader();
+  rd.onload=()=>{if(xl){if(!window.XLSX){note('Excel reading is not available here. Paste the rows instead.');return}
+      try{const wb=XLSX.read(rd.result,{type:'array'});pend=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});note(`Excel file loaded (${pend.length} rows). Select Import items to add it.`)}catch(x){note('Could not read that Excel file.')}}
+    else{$('impTxt').value=rd.result;note('File loaded. Select Import items to add it.')}};
+  rd.onerror=()=>note('Could not read that file. Paste its rows instead.');
+  xl?rd.readAsArrayBuffer(f):rd.readAsText(f)};
+$('impGo').onclick=()=>{const r=importItems(pend||$('impTxt').value);note(r);if(/^Imported/.test(r)){logc('master','Imported',r);closeImp()}};
+$('expBtn').onclick=async()=>{let d=null;try{d=window.claude?await window.claude.use('downloads'):null}catch(e){}
+  if(!d||!window.XLSX){$('impTxt').value=toCsv();$('impBox').hidden=false;note('Excel export is not available here. Copy the text in the box and paste it into Excel.');return}
+  try{const ws=XLSX.utils.aoa_to_sheet([MC,...S.items.map(it=>[...MK.map(k=>it[k]),unit(it)])]);
+    ws['!cols']=[6,12,34,26,12,10,14,12,13,18,11,11].map(w=>({wch:w}));
+    S.items.forEach((_,i)=>[5,8,9,11].forEach(c=>{const ad=XLSX.utils.encode_cell({r:i+1,c});if(ws[ad])ws[ad].z='#,##0.00'}));
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Item Master');
+    await d.save({filename:'item-master.xlsx',data:XLSX.write(wb,{bookType:'xlsx',type:'array'})});note('Export ready.')}
+  catch(e){note(e&&e.code==='declined'?'Export cancelled.':'Export could not be saved. Try again.')}};
+
+/* ---------- Data Entry ---------- */
+const EH=['Date','Month Week Number','Item Description','Beginning Inventory','Deliveries','Document Number','Stock Withdrawal','Transfer from','Transfer from Location','Internal Transfer From (Price Changes)','Transfer To','Transfer To Location','Internal Transfer To (Price Changes)','Bad Order','Total Goods Available','Ending Inventory','Total Goods Sold','SRP','Total Sales'];
+const EW=[6.5,4,11,4,4,5,4.5,4,6,5,4,6,5,4,5,4.5,4.5,4.5,5.5,3];
+const lbl=no=>{const it=item(no);return it?`${it.desc} (SRP ${f2(it.srp)})`:''};
+function comp(){
+  const idx=S.rows.map((r,i)=>i).sort((a,b)=>dcmp(S.rows[a].date,S.rows[b].date)||fo(S.rows[a])-fo(S.rows[b])||a-b),last={},out=[];
+  idx.forEach(i=>{const r=S.rows[i],key=r.loc+'|'+r.no,auto=r.no!==''&&(key in last),beg=auto?last[key]:num(r.beg);
+    const tg=beg+num(r.del)+num(r.tf)+num(r.itf)-num(r.tt)-num(r.itt),sold=tg-num(r.end),srp=num((item(r.no)||{}).srp);
+    out[i]={auto,beg,tg,sold,srp,sales:sold*srp};if(r.no!=='')last[key]=num(r.end)});
+  return out}
+const dayTot=(d,label,cat)=>`<tr class="dtot" data-dt="${esc(d)}"${cat!=null?` data-cat="${esc(cat)}"`:''}><td></td><td></td><td class="tl">${label}</td>${['beg','del'].map(k=>`<td class="q" data-t="${k}"></td>`).join('')}<td></td>${['wd','tf'].map(k=>`<td class="q" data-t="${k}"></td>`).join('')}<td></td><td class="q" data-t="itf"></td><td class="q" data-t="tt"></td><td></td><td class="q" data-t="itt"></td><td class="q" data-t="bad"></td><td class="q" data-t="tg"></td><td class="q" data-t="end"></td><td class="q" data-t="sold"></td><td></td><td class="a" data-t="sales"></td><td></td></tr>`;
+const colg=(W=EW)=>'<colgroup>'+W.map(w=>`<col style="width:${w}%">`).join('')+'</colgroup>';
+const stickyH=(h,w)=>`<div class="scroll hd"><table>${colg(w)}<thead>${hdr(h,w)}</thead></table></div>`;
+function renderEntry(){
+  if(!S.vd)S.vd=defView();
+  S.rows.sort(rowCmp);$('vd').value=S.vd;$('vtf').value=S.vf;
+  const C=comp();
+  const N=(i,k,v)=>`<td><input type="number" step="any" class="q" data-i="${i}" data-k="${k}" value="${esc(raw(v))}"></td>`;
+  const L=(i,k,v)=>`<td><select data-i="${i}" data-k="${k}"><option value=""></option>${(S.locs.includes(v)||!v?S.locs:[...S.locs,v]).map(l=>`<option${l===v?' selected':''}>${esc(l)}</option>`).join('')}</select></td>`;
+  const rowH=i=>{const r=S.rows[i];
+    return `<tr data-r="${i}"><td class="q">${fd(r.date)}</td><td class="c q" data-c="week"></td>
+    <td><input type="text" class="ci" data-i="${i}" data-k="no" value="${esc(lbl(r.no))}" placeholder="Search item" autocomplete="off" aria-label="Item description"></td>
+    ${C[i].auto?'<td class="c q" data-c="beg"></td>':N(i,'beg',r.beg)}${N(i,'del',r.del)}<td><input type="text" class="doc" data-i="${i}" data-k="doc" value="${esc(r.doc||'')}" autocomplete="off" aria-label="Document Number"></td>${N(i,'wd',r.wd)}${N(i,'tf',r.tf)}${L(i,'tfl',r.tfl)}${N(i,'itf',r.itf)}${N(i,'tt',r.tt)}${L(i,'ttl',r.ttl)}${N(i,'itt',r.itt)}${N(i,'bad',r.bad)}
+    <td class="c q" data-c="tga"></td><td><input type="number" step="any" class="q" data-i="${i}" data-k="end" value="${esc(raw(r.end))}"${r.end===0?' placeholder="Sold out"':''}></td><td class="c q" data-c="sold"></td><td class="a" data-c="srp"></td><td class="c a" data-c="sales"></td>
+    <td>${canAdm()?`<button class="x" data-del="${i}" title="Delete row" aria-label="Delete row">×</button>`:''}</td></tr>`};
+  const ids=S.rows.map((r,i)=>i).filter(i=>S.rows[i].loc===S.inv&&S.rows[i].date===S.vd&&S.rows[i].fr===S.vf),secs=[];
+  ids.forEach(i=>{const c=catOfRow(S.rows[i]),l=secs[secs.length-1];if(l&&l.c===c)l.ids.push(i);else secs.push({c,ids:[i]})});
+  const body=ids.length?secs.map(x=>(x.c?`<tr class="cat"><td colspan="20">${esc(x.c)}</td></tr>`:'')+x.ids.map(rowH).join('')+(x.c?dayTot(S.vd,'Total',x.c):'')).join('')+dayTot(S.vd,'Grand Total')
+    :`<tr><td class="empty" colspan="20">No ${S.vf} Shift entries on ${fd(S.vd)}. Select Add row to record stock movement.</td></tr>`;
+  $('eb').innerHTML=stickyH(EH,EW)+`<div class="scroll gt"><table>${colg()}<tbody>${body}</tbody></table></div>`+cashHtml(`<tr><td>Should be Sales</td><td class="a" id="cdS"></td></tr><tr><td>Cash on Hand</td><td><input type="text" inputmode="decimal" class="a" id="cdC" aria-label="Cash on hand" value="${S.cash[cashKey(S.vd)]===undefined||S.cash[cashKey(S.vd)]===''?'':acct(S.cash[cashKey(S.vd)])}"></td></tr><tr><td>Over/Short</td><td class="a c" id="cdO"></td></tr>${cashierSel()}`,`Cash Details (${S.vf} Shift)`);refresh();
+}
+function refresh(){
+  const C=comp(),D={};
+  $('eb').querySelectorAll('tr[data-r]').forEach(tr=>{const i=+tr.dataset.r,r=S.rows[i],c=C[i];
+    const vals={beg:c.beg,tg:c.tg,end:num(r.end),sold:c.sold,sales:c.sales};['del','wd','tf','itf','tt','itt','bad'].forEach(k=>{vals[k]=num(r[k])});
+    [r.date,r.date+'|'+catOfRow(r)].forEach(key=>{const d=D[key]=D[key]||{};for(const k in vals)d[k]=(d[k]||0)+vals[k]});
+    const set=(k,v,neg)=>{const el=tr.querySelector(`[data-c="${k}"]`);if(el){el.textContent=v;el.classList.toggle('neg',!!neg)}};
+    set('week',weekOf(r.date));set('beg',q(c.beg));set('tga',q(c.tg),c.tg<0);set('sold',q(c.sold),c.sold<0);set('srp',acct(c.srp));set('sales',acct(c.sales),c.sales<0);const ei=tr.querySelector('input[data-k="end"]');if(ei)ei.placeholder=(c.tg>0&&num(r.end)===0)?'Sold out':''});
+  $('eb').querySelectorAll('tr.dtot').forEach(tr=>{const d=D['cat' in tr.dataset?tr.dataset.dt+'|'+tr.dataset.cat:tr.dataset.dt]||{};
+    tr.querySelectorAll('[data-t]').forEach(el=>{const k=el.dataset.t,v=d[k]||0;el.textContent=k==='sales'?acct(v):q(v);el.classList.toggle('neg',(k==='sales'||k==='sold')&&v<0)});
+    if(!('cat' in tr.dataset)){const m=(d.itf||0)!==(d.itt||0);['itf','itt'].forEach(k=>{const el=tr.querySelector(`[data-t="${k}"]`);if(el)el.classList.toggle('neg',m)})}});
+  const sh=(D[S.vd]||{}).sales||0,ck=S.cash[cashKey(S.vd)],has=ck!==undefined&&ck!=='',eS=$('cdS');
+  if(eS){eS.textContent=acct(sh);const eo=$('cdO');eo.textContent=has?acct(num(ck)-sh):'';eo.classList.toggle('neg',has&&num(ck)-sh<0)}
+}
+const cashKey=(d,f)=>S.inv+'|'+d+((f||S.vf)==='PM'?'|PM':'');
+const ckParts=k=>{const p=k.endsWith('|PM')?k.slice(0,-3):k,i=p.lastIndexOf('|');return[p.slice(0,i),p.slice(i+1)]};
+const cashHtml=(inner,t)=>`<div class="scroll cashwrap"><table class="cd"><tbody><tr class="cat"><td colspan="2">${t||'Cash Details'}</td></tr>${inner}</tbody></table></div>`;
+const cashRows=(sh,c,o,neg)=>`<tr><td>Should be Sales</td><td class="a">${sh}</td></tr><tr><td>Cash on Hand</td><td class="a">${c}</td></tr><tr><td>Over/Short</td><td class="a c${neg?' neg':''}">${o}</td></tr>`;
+const cashierSel=()=>{const ci=S.cinfo[cashKey(S.vd)]||{},v=ci.cashier||'';
+  return `<tr><td>Cashier Name</td><td><select id="cdN" aria-label="Cashier name"><option value=""></option>${(S.cashiers.includes(v)||!v?S.cashiers:[...S.cashiers,v]).map(n=>`<option${n===v?' selected':''}>${esc(n)}</option>`).join('')}</select></td></tr><tr><td>Shift</td><td><select id="cdH" aria-label="Shift"><option value=""></option>${['A','B'].map(x=>`<option${ci.shift===x?' selected':''}>${x}</option>`).join('')}</select></td></tr>`};
+const setView=(d,f)=>{if(!d)return;prune();S.vd=d;if(f)S.vf=f==='PM'?'PM':'AM';carry(d,S.vf);save();renderEntry()};
+$('eb').addEventListener('input',e=>{const t=e.target;if(t.id!=='cdC')return;const v=t.value.trim()===''?'':parseFloat(t.value.replace(/,/g,''));S.cash[cashKey(S.vd)]=isNaN(v)?'':v;save();refresh()});
+$('eb').addEventListener('focusin',e=>{const t=e.target;if(t.id==='cdC'){const v=S.cash[cashKey(S.vd)];t.value=num(v)===0?'':v;t.select()}});
+$('eb').addEventListener('focusout',e=>{const t=e.target;if(t.id==='cdC'){const v=S.cash[cashKey(S.vd)];t.value=v===undefined||v===''?'':acct(v)}});
+$('eb').addEventListener('change',e=>{const t=e.target;if(t.type==='number'&&t.value!==''&&parseFloat(t.value)===0){t.value='';if(t.dataset.k==='end')t.placeholder='Sold out'}});
+$('eb').addEventListener('change',e=>{const t=e.target;if(t.id!=='cdN'&&t.id!=='cdH')return;const key=cashKey(S.vd),ci=S.cinfo[key]=S.cinfo[key]||{},f=t.id==='cdN'?'cashier':'shift',o=ci[f]||'';ci[f]=t.value.trim();
+  if(o!==ci[f])logc('entry','Changed',`${fd(S.vd)} ${S.vf} ${f==='cashier'?'Cashier Name':'Shift'}: ${o||'(blank)'} → ${ci[f]||'(blank)'}`,S.vd);save()});
+$('vd').onchange=e=>setView(e.target.value);
+$('vtf').onchange=e=>setView(S.vd||defView(),e.target.value);
+$('vPrev').onclick=()=>setView(addDay(S.vd||defView(),-1));
+$('vNext').onclick=()=>setView(addDay(S.vd||defView(),1));
+/* searchable item picker */
+const dd=document.createElement('div');dd.id='dd';dd.hidden=true;document.body.appendChild(dd);
+let ddIn=null,ddHi=0,ddList=[];
+function ddOpen(inp,term){ddIn=inp;const s=term.toLowerCase().trim();
+  ddList=S.items.filter(x=>(!s||[x.desc,x.sys,x.code,x.cat,f2(x.srp),x.no].join(' ').toLowerCase().includes(s)));ddHi=0;
+  const b=inp.getBoundingClientRect();dd.style.left=Math.min(b.left,innerWidth-310)+'px';dd.style.top=(b.bottom+2)+'px';dd.style.minWidth=Math.max(b.width,300)+'px';
+  dd.innerHTML=ddList.length?ddList.map((x,j)=>`<div class="opt${j?'':' on'}" data-n="${x.no}"><b>${esc(x.desc)}</b> (SRP ${f2(x.srp)})<small>Line ${x.no}  |  ${esc(x.code)}  |  ${esc(x.cat)}</small></div>`).join(''):`<div class="opt">${S.items.length?'No matching item':'No items in the Item Master yet'}</div>`;
+  dd.hidden=false}
+function ddPick(no){const i=ddIn.dataset.i,r=S.rows[i],o=lbl(r.no);r.no=Number(no);logc('entry',o?'Changed':'Added',`${fd(r.date)} ${r.fr} item: ${o||'(blank)'} → ${lbl(r.no)}`,r.date);dd.hidden=true;save();renderEntry()}
+function ddMark(){[...dd.children].forEach((c,j)=>c.classList.toggle('on',j===ddHi));const c=dd.children[ddHi];if(c)c.scrollIntoView({block:'nearest'})}
+dd.addEventListener('mousedown',e=>{const o=e.target.closest('[data-n]');if(!o)return;e.preventDefault();ddPick(o.dataset.n)});
+addEventListener('scroll',()=>{dd.hidden=true},true);
+$('eb').addEventListener('focusin',e=>{const t=e.target;if(t.classList.contains('ci')){ddOpen(t,'');t.select()}});
+$('eb').addEventListener('focusout',e=>{const t=e.target;if(t.classList.contains('ci'))setTimeout(()=>{if(document.activeElement!==t){dd.hidden=true;if(t.isConnected)t.value=lbl(S.rows[t.dataset.i].no)}},150)});
+$('eb').addEventListener('keydown',e=>{const t=e.target;if(!t.classList.contains('ci'))return;
+  if(e.key==='ArrowDown'){e.preventDefault();ddHi=Math.min(ddHi+1,ddList.length-1);ddMark()}
+  else if(e.key==='ArrowUp'){e.preventDefault();ddHi=Math.max(ddHi-1,0);ddMark()}
+  else if(e.key==='Enter'){e.preventDefault();if(ddList[ddHi])ddPick(ddList[ddHi].no)}
+  else if(e.key==='Escape'){dd.hidden=true;t.value=lbl(S.rows[t.dataset.i].no);t.blur()}});
+$('eb').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null||t.type==='date')return;if(t.classList.contains('ci')){ddOpen(t,t.value);return}
+  S.rows[i][t.dataset.k]=val(t);save();refresh()});
+$('eb').addEventListener('click',e=>{const d=e.target.dataset.del;if(d==null||!canAdm())return;const gr=S.rows[d];if(gr&&gr.gen){S.nc=S.nc||{};S.nc[gr.loc+'|'+gr.date+(gr.fr==='PM'?'|PM':'')+'|'+gr.no]=1}if(gr)logc('entry','Deleted',`${fd(gr.date)} ${gr.fr} ${(item(gr.no)||{}).desc||'(no item)'} row deleted`,gr.date);S.rows.splice(d,1);save();renderEntry()});
+$('addRow').onclick=()=>{
+  S.rows.push(R('',S.vd,{loc:S.inv,fr:S.vf}));logc('entry','Added',`Blank row added on ${fd(S.vd)} (${S.vf} Shift)`,S.vd);save();renderEntry();const t=$('eb').querySelectorAll('tr[data-r]'),lr=t[t.length-1];if(lr)lr.querySelector('input.ci').focus()};
+
+/* ---------- Weekly Summary (one tab per week) ---------- */
+const SH=['Item Description','Beginning Inventory','Deliveries','Stock Withdrawal','Transfer from','Internal Transfer From (Price Changes)','Transfer To','Internal Transfer To (Price Changes)','Bad Order','Total Goods Available','Ending Inventory','Total Goods Sold','SRP','Total Sales'];
+const SW=[15,6,6,6,6,7,6,7,6,7,6,6,6,10];
+const weeksN=()=>{const n=Math.floor((Date.parse(S.cut)-Date.parse(S.start))/864e5/7)+1;return n>0?n:0};
+function renderWeek(k){const a=addDay(S.start,7*(k-1));let b=addDay(a,6);if(b>S.cut)b=S.cut;renderRange(a,b,`Week ${k} Summary`)}
+function renderRange(a,b,title){
+  const C=comp();
+  const ids=S.rows.map((r,i)=>i).filter(i=>{const r=S.rows[i];return r.loc===S.inv&&r.no!==''&&r.date>=a&&r.date<=b}).sort((x,y)=>S.rows[x].date.localeCompare(S.rows[y].date)||x-y);
+  const g={};ids.forEach(i=>(g[S.rows[i].no]=g[S.rows[i].no]||[]).push(i));
+  const lines=Object.keys(g).map(Number).sort((x,y)=>x-y),catOf=no=>(item(no)||{}).cat||'Uncategorized',cats=[];
+  lines.forEach(no=>{if(!cats.includes(catOf(no)))cats.push(catOf(no))});cats.sort((x,y)=>x.localeCompare(y));
+  let h=`<h2>${title}<span>${fd(a)} to ${fd(b)}  |  ${esc(S.inv)}</span></h2>`+stickyH(SH,SW);
+  let SS=0;cats.forEach(cat=>{
+    const T={beg:0,del:0,wd:0,tf:0,itf:0,tt:0,itt:0,bad:0,tg:0,end:0,sold:0,sales:0};
+    const body=lines.filter(no=>catOf(no)===cat).sort((x,y)=>((item(x)||{}).desc||'').localeCompare((item(y)||{}).desc||'')||x-y).map(no=>{
+      const rs=g[no],sum=c=>rs.reduce((t,i)=>t+num(S.rows[i][c]),0),it=item(no)||{},beg=C[rs[0]].beg,end=num(S.rows[rs[rs.length-1]].end);
+      const tg=beg+sum('del')+sum('tf')+sum('itf')-sum('tt')-sum('itt'),sold=tg-end,srp=num(it.srp),sales=sold*srp;
+      ['del','wd','tf','itf','tt','itt','bad'].forEach(c=>T[c]+=sum(c));T.beg+=beg;T.tg+=tg;T.end+=end;T.sold+=sold;T.sales+=sales;
+      return `<tr><td>${esc(it.desc)}</td>${[beg,sum('del'),sum('wd'),sum('tf'),sum('itf'),sum('tt'),sum('itt'),sum('bad'),tg,end,sold].map(v=>`<td class="q">${q(v)}</td>`).join('')}<td class="a">${acct(srp)}</td><td class="a${sales<0?' neg':''}">${acct(sales)}</td></tr>`}).join('');
+    const m=T.itf!==T.itt?' neg':'',f=(v,c)=>`<td class="q${c||''}">${q(v)}</td>`;
+    SS+=T.sales;h+=`<div class="scroll gt"><table>${colg(SW)}<tbody><tr class="cat"><td colspan="14">${esc(cat)}</td></tr>${body}</tbody><tfoot><tr><td>Total</td>${f(T.beg)}${f(T.del)}${f(T.wd)}${f(T.tf)}${f(T.itf,m)}${f(T.tt)}${f(T.itt,m)}${f(T.bad)}${f(T.tg)}${f(T.end)}${f(T.sold)}<td></td><td class="a${T.sales<0?' neg':''}">${acct(T.sales)}</td></tr></tfoot></table></div>`});
+  if(!cats.length)h+='<div class="scroll"><table><tbody><tr><td class="empty">No entries in this week.</td></tr></tbody></table></div>';
+  if(cats.length){const ks=Object.keys(S.cash).filter(k=>{const[l,d]=ckParts(k);return l===S.inv&&d>=a&&d<=b&&S.cash[k]!==''}),cash=ks.reduce((t,k)=>t+num(S.cash[k]),0);
+    h+=cashHtml(cashRows(acct(SS),ks.length?acct(cash):'',ks.length?acct(cash-SS):'',ks.length&&cash-SS<0))}
+  $('sm').innerHTML=h;
+}
+
+/* ---------- Login & user access ---------- */
+let sess=null;try{sess=Number(sessionStorage.getItem('inv_sess'))||null}catch(e){}
+const setSess=id=>{sess=id;try{id?sessionStorage.setItem('inv_sess',id):sessionStorage.removeItem('inv_sess')}catch(e){}};
+const me=()=>S.users.find(u=>u.id===sess&&u.user&&u.hash)||null;
+const canLoc=(u,l)=>!u||u.all||u.locs.includes(l);
+const isAdm=u=>!!u&&u.all&&u.acc.includes('All')&&!u.acc.includes('View Only')&&u.res.length===0;
+const canEditData=()=>{const u=me();return !u||(u.acc.includes('All')&&!u.acc.includes('View Only'))};
+const ro=()=>!canEditData();
+const canSet=a=>{const u=me();return !u||((u.acc.includes('All')||u.acc.includes(a))&&!u.res.includes(a))};
+const canAdm=()=>{const u=me();return !u||isAdm(u)||!S.users.some(isAdm)};
+function applyAccess(){const set=(k,v)=>document.querySelectorAll(`[data-edit="${k}"]`).forEach(e=>{e.inert=v});set('d',!canEditData());set('l',!canSet('Inventory Location'));set('s',!canSet('Start Date'));set('c',!canSet('Cut Off Date'));set('a',!canAdm());document.querySelectorAll('.adm').forEach(e=>{e.hidden=!canAdm()})}
+function buildMe(){const u=me();$('whoName').textContent=u?`Signed in as ${u.name}`:''}
+async function sha(t){try{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}catch(e){return 'x'+btoa(unescape(encodeURIComponent(t)))}}
+const rnd=()=>{try{return [...crypto.getRandomValues(new Uint8Array(8))].map(b=>b.toString(16).padStart(2,'0')).join('')}catch(e){return Math.random().toString(36).slice(2)}};
+function ask(msg){return new Promise(res=>{$('askMsg').textContent=msg;$('ask').hidden=false;const done=v=>{$('ask').hidden=true;res(v)};$('askYes').onclick=()=>done(true);$('askNo').onclick=()=>done(false)})}
+async function login(){const n=$('lgUser').value.trim().toLowerCase(),pw=$('lgPw').value,u=S.users.find(x=>x.user&&x.hash&&x.user.toLowerCase()===n);
+  const ok=u?(await sha(u.salt+pw))===u.hash:false;
+  if(!ok){await new Promise(r=>setTimeout(r,700));$('lgErr').textContent='Incorrect username or password.';logc('users','Failed sign-in',`Username entered: ${n||'(blank)'}`);return}
+  $('lgPw').value='';$('lgUser').value='';setSess(u.id);logc('users','Signed in','');boot()}
+$('lgGo').onclick=login;$('lgPw').onkeydown=$('lgUser').onkeydown=e=>{if(e.key==='Enter')login()};
+$('lgReset').onclick=()=>{const lg=S.log||[];S=seed();S.log=lg;logc('setup','Restored sample data','Sample data restored from the sign-in screen');boot()};
+$('outBtn').onclick=()=>{logc('users','Signed out','');setSess(null);boot()};
+$('pwBtn').onclick=()=>show('acct');
+$('pwGo').onclick=async()=>{const u=me(),m=t=>{$('pwMsg').textContent=t};if(!u)return;
+  if((await sha(u.salt+$('pwOld').value))!==u.hash)return m('Current password is incorrect.');
+  const n=$('pwNew').value;if(n.length<6)return m('New password needs at least 6 characters.');if(n!==$('pwNew2').value)return m('The new passwords do not match.');
+  u.salt=rnd();u.hash=await sha(u.salt+n);logc('users','Changed','Changed own password');save();['pwOld','pwNew','pwNew2'].forEach(i=>$(i).value='');m('Password updated.')};
+const UH=['Line Number','Employee Name','Location Access','Access','Restrictions','Username','Password'],UW=[4,13,18,19,19,10,13,4],ACC=['All','View Only','Inventory Location','Start Date','Cut Off Date'],RES=['Inventory Location','Start Date','Cut Off Date'];
+const uNote=t=>{$('uMsg').textContent=t};
+function renderUsers(){
+  const rowsH=S.users.map((u,i)=>`<tr><td class="q">${i+1}</td><td><input type="text" data-u="${i}" data-k="name" value="${esc(u.name)}" placeholder="Employee name"></td>
+   <td><label class="cb"><input type="checkbox" data-u="${i}" data-k="all"${u.all?' checked':''}> All Location</label>${S.locs.map(l=>`<label class="cb"><input type="checkbox" data-u="${i}" data-loc="${esc(l)}"${u.all?' disabled':''}${!u.all&&u.locs.includes(l)?' checked':''}> ${esc(l)}</label>`).join('')}</td>
+   <td>${ACC.map(a=>`<label class="cb rb"><input type="checkbox" data-u="${i}" data-acc="${a}"${u.acc.includes(a)?' checked':''}${u.acc.includes('All')&&a!=='All'?' disabled':''}> ${a}</label>`).join('')}</td>
+   <td>${RES.map(r=>`<label class="cb rb"><input type="checkbox" data-u="${i}" data-res="${r}"${u.res.includes(r)?' checked':''}> ${r}</label>`).join('')}</td>
+   <td><input type="text" data-u="${i}" data-k="user" value="${esc(u.user)}" placeholder="Username" autocomplete="off"></td>
+   <td><input type="password" data-u="${i}" data-k="pw" placeholder="${u.hash?'•••••••• (set)':'Set password'}" autocomplete="new-password"></td>
+   <td><button class="x" data-du="${i}" title="Remove user" aria-label="Remove user">×</button></td></tr>`).join('');
+  $('ub').innerHTML=stickyH(UH,UW)+`<div class="scroll gt"><table>${colg(UW)}<tbody>${rowsH}</tbody></table></div>`;
+}
+$('ub').addEventListener('change',async e=>{const t=e.target,i=t.dataset.u;if(i==null)return;const u=S.users[i],k=t.dataset.k;uNote('');
+  const who=u.name||`line ${+i+1}`;let msg='';
+  if(t.dataset.loc!=null)msg=`${who}: location access ${t.checked?'added':'removed'} - ${t.dataset.loc}`;
+  else if(k==='all')msg=`${who}: All Location ${t.checked?'ticked':'unticked'}`;
+  else if(t.dataset.acc!=null)msg=`${who}: access "${t.dataset.acc}" ${t.checked?'ticked':'unticked'}`;
+  else if(t.dataset.res!=null)msg=`${who}: restriction "${t.dataset.res}" ${t.checked?'ticked':'unticked'}`;
+  else if(k==='user')msg=`${who}: username "${u.user||''}" → "${t.value.trim()}"`;
+  else if(k==='pw')msg=t.value?`${who}: password reset`:'';
+  else msg=`Employee name "${u.name||''}" → "${t.value.trim()}"`;
+  if(t.dataset.loc!=null){const l=t.dataset.loc;u.locs=t.checked?[...new Set([...u.locs,l])]:u.locs.filter(x=>x!==l)}
+  else if(k==='all')u.all=t.checked;
+  else if(t.dataset.acc!=null){const a=t.dataset.acc;if(a==='All')u.acc=t.checked?['All']:[];else u.acc=t.checked?[...new Set([...u.acc.filter(x=>x!=='All'),a])]:u.acc.filter(x=>x!==a)}
+  else if(t.dataset.res!=null){const r=t.dataset.res;u.res=t.checked?[...new Set([...u.res,r])]:u.res.filter(x=>x!==r)}
+  else if(k==='user'){const n=t.value.trim();if(n&&S.users.some((x,j)=>j!=i&&(x.user||'').toLowerCase()===n.toLowerCase())){uNote('That username is already used.');renderUsers();return}u.user=n}
+  else if(k==='pw'){if(!t.value)return;if(t.value.length<6){uNote('Passwords need at least 6 characters.');renderUsers();return}u.salt=rnd();u.hash=await sha(u.salt+t.value);uNote(`Password updated for ${u.name||'user'}.`)}
+  else u.name=t.value.trim();
+  if(msg)logc('users','Changed',msg);save();if(!me()){setSess(null);boot();return}renderUsers();buildMe();applyAccess()});
+$('ub').addEventListener('click',e=>{const d=e.target.dataset.du;if(d==null)return;logc('users','Deleted',`User removed: ${S.users[d].name||'(blank line '+(+d+1)+')'}`);S.users.splice(d,1);save();if(!me()){setSess(null);boot();return}renderUsers();buildMe();applyAccess()});
+$('addUser').onclick=()=>{S.users.push({id:S.users.reduce((m,x)=>Math.max(m,x.id),0)+1,name:'',all:false,locs:[],acc:['View Only'],res:[],user:'',salt:'',hash:''});logc('users','Added',`Blank user line ${S.users.length} added`);save();renderUsers()};
+
+/* ---------- Excel import / export for report tables ---------- */
+async function saveXlsx(aoa,sheet,file,money,widths,msg){let d=null;try{d=window.claude?await window.claude.use('downloads'):null}catch(e){}
+  if(!d||!window.XLSX){msg('Excel download is not available in this viewer.');return}
+  try{const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=widths.map(w=>({wch:w}));
+    const rg=XLSX.utils.decode_range(ws['!ref']);for(let r=0;r<=rg.e.r;r++)money.forEach(c=>{const a=XLSX.utils.encode_cell({r,c});if(ws[a]&&typeof ws[a].v==='number')ws[a].z='#,##0.00;-#,##0.00;"-"'});
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,sheet.slice(0,31));
+    await d.save({filename:file,data:XLSX.write(wb,{bookType:'xlsx',type:'array'})});msg('Export ready.')}
+  catch(e){msg(e&&e.code==='declined'?'Export cancelled.':'Export could not be saved. Try again.')}}
+function entryAoa(){
+  const C=comp(),Z=v=>num(v)===0?'':num(v),aoa=[[...EH,'Shift']],G={del:0,wd:0,tf:0,itf:0,tt:0,itt:0,bad:0,sold:0,sales:0},X=['del','wd','tf','itf','tt','itt','bad'];
+  const vis=S.rows.map((r,i)=>i).filter(i=>S.rows[i].loc===S.inv);
+  const nd=()=>({beg:0,del:0,wd:0,tf:0,itf:0,tt:0,itt:0,bad:0,tg:0,end:0,sold:0,sales:0});
+  const tot=(l,D)=>['','',l,Z(D.beg),Z(D.del),'',Z(D.wd),Z(D.tf),'',Z(D.itf),Z(D.tt),'',Z(D.itt),Z(D.bad),Z(D.tg),Z(D.end),Z(D.sold),'',D.sales];
+  let k=0;
+  while(k<vis.length){let e=k;const d=S.rows[vis[k]].date,fr=S.rows[vis[k]].fr==='PM'?'PM':'AM',secs=[],DD=nd(),st=aoa.length;
+    while(e<vis.length&&S.rows[vis[e]].date===d&&(S.rows[vis[e]].fr==='PM'?'PM':'AM')===fr)e++;
+    vis.slice(k,e).forEach(i=>{const c=catOfRow(S.rows[i]),l=secs[secs.length-1];if(l&&l.c===c)l.ids.push(i);else secs.push({c,ids:[i]})});
+    secs.forEach(x=>{const SD=nd();if(x.c)aoa.push([x.c]);
+      x.ids.forEach(i=>{const r=S.rows[i],c=C[i];
+        aoa.push([fd(r.date),weekOf(r.date),(item(r.no)||{}).desc||'',Z(c.beg),Z(r.del),r.doc||'',Z(r.wd),Z(r.tf),r.tfl||'',Z(r.itf),Z(r.tt),r.ttl||'',Z(r.itt),Z(r.bad),Z(c.tg),Z(r.end),Z(c.sold),c.srp,c.sales]);
+        [SD,DD].forEach(D=>{D.beg+=c.beg;D.tg+=c.tg;D.end+=num(r.end);D.sold+=c.sold;D.sales+=c.sales;X.forEach(y=>{D[y]+=num(r[y])})});
+        X.forEach(y=>{G[y]+=num(r[y])});G.sold+=c.sold;G.sales+=c.sales});
+      if(d&&x.c)aoa.push(tot('Total',SD))});
+    if(d&&(secs.length>1||secs.every(x=>!x.c)))aoa.push(tot('Day Total',DD));
+    if(d){const ck=S.cash[cashKey(d,fr)],has=ck!==undefined&&ck!=='',cr=(l,v)=>{const r=Array(19).fill('');r[2]=l;r[18]=v;return r};
+      aoa.push(cr('Cash Details',''),cr('Should be Sales',DD.sales),cr('Cash on Hand',has?num(ck):''),cr('Over/Short',has?num(ck)-DD.sales:''),cr('Cashier Name',(S.cinfo[cashKey(d,fr)]||{}).cashier||''),cr('Shift',(S.cinfo[cashKey(d,fr)]||{}).shift||''))}
+    for(let z=st;z<aoa.length;z++){const a=aoa[z];while(a.length<19)a.push('');a[19]=fr}
+    aoa.push([]);k=e}
+  aoa.push(['','','Grand Total','',Z(G.del),'',Z(G.wd),Z(G.tf),'',Z(G.itf),Z(G.tt),'',Z(G.itt),Z(G.bad),'','',Z(G.sold),'',G.sales]);
+  return aoa}
+$('deExp').onclick=()=>saveXlsx(entryAoa(),'Data Entry','data-entry.xlsx',[17,18],[10,10,26,11,10,14,10,10,20,12,10,20,12,9,11,11,11,9,12,10],m=>{$('eMsg').textContent=m});
+const DK=h=>{const k=String(h??'').toLowerCase().replace(/[^a-z]/g,'');
+  if(k==='date')return 'date';if(k==='itemdescription')return 'desc';if(/^beg/.test(k))return 'beg';if(/^deliver/.test(k))return 'del';if(/^document/.test(k))return 'doc';if(/^stockwith/.test(k))return 'wd';
+  if(k==='transferfromlocation')return 'tfl';if(k==='transfertolocation')return 'ttl';if(/^internaltransferfrom/.test(k))return 'itf';if(/^internaltransferto/.test(k))return 'itt';
+  if(k==='transferfrom')return 'tf';if(k==='transferto')return 'tt';if(/^bad/.test(k))return 'bad';if(/^ending/.test(k))return 'end';if(k==='srp')return 'srp';if(/^timeframe/.test(k))return 'frame';if(k==='totalsales')return 'sales';return ''};
+const pad=x=>String(x).padStart(2,'0');
+function parseDate(v){
+  if(v instanceof Date&&!isNaN(v))return v.toISOString().slice(0,10);
+  if(typeof v==='number'&&v>20000)return new Date(Math.round((v-25569)*864e5)).toISOString().slice(0,10);
+  const t=String(v??'').trim();if(!t)return '';let m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m=t.match(/^(\d{1,2})[-\s]([A-Za-z]{3})[a-z]*(?:[-\s](\d{2,4}))?$/);
+  if(m){const mo=MON.findIndex(x=>x.toLowerCase()===m[2].toLowerCase());if(mo>=0){let y=m[3]?+m[3]:+S.start.slice(0,4);if(y<100)y+=2000;return `${y}-${pad(mo+1)}-${pad(m[1])}`}}
+  m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);if(m){let y=+m[3];if(y<100)y+=2000;return `${y}-${pad(m[1])}-${pad(m[2])}`}
+  return ''}
+function importEntries(rows){
+  rows=rows.filter(r=>r.some(x=>String(x??'').trim()!==''));if(!rows.length)return 'Nothing to import.';
+  const cols=rows[0].map(DK);if(!cols.includes('date')||!cols.includes('desc'))return 'The header row needs Date and Item Description columns.';
+  let add=0,up=0,skip=0,lastD='',curD='',curF='AM';
+  rows.slice(1).forEach(r=>{const o={};cols.forEach((k,j)=>{if(k&&r[j]!==undefined&&r[j]!=='')o[k]=r[j]});
+    const desc=String(o.desc??'').trim();const fq=String(o.frame??'').trim(),fr=/^pm/i.test(fq)?'PM':/^am/i.test(fq)?'AM':curF;
+    if(/^cash on hand/i.test(desc)&&curD){const n=parseFloat(String(o.sales??'').replace(/[^0-9.\-]/g,''));if(!isNaN(n))S.cash[cashKey(curD,fr)]=n;return}
+    if(/^(cashier name|shift)$/i.test(desc)&&curD){const key=cashKey(curD,fr);S.cinfo[key]=S.cinfo[key]||{};const isS=/^shift/i.test(desc),v=String(o.sales??'').trim();S.cinfo[key][isS?'shift':'cashier']=isS?(/^[ab]$/i.test(v)?v.toUpperCase():''):v;return}
+    if(!desc||/^((grand |day )?total|cash details|should be sales|over\/short)/i.test(desc))return;
+    const date=parseDate(o.date),cands=S.items.filter(x=>String(x.desc).trim().toLowerCase()===desc.toLowerCase());
+    const srp=o.srp!==undefined?parseFloat(String(o.srp).replace(/[^0-9.\-]/g,'')):NaN,it=(!isNaN(srp)&&cands.find(x=>num(x.srp)===srp))||cands[0];
+    if(!date||!it){skip++;return}curD=date;curF=fr;
+    const nr=R(it.no,date,{loc:S.inv,fr});['beg','del','wd','tf','itf','tt','itt','bad','end'].forEach(k=>{if(o[k]!==undefined){const n=parseFloat(String(o[k]).replace(/,/g,''));nr[k]=isNaN(n)?'':n}});
+    if(o.doc!==undefined)nr.doc=String(o.doc).trim();if(o.tfl)nr.tfl=String(o.tfl).trim();if(o.ttl)nr.ttl=String(o.ttl).trim();if(date>lastD)lastD=date;
+    const ex=S.rows.find(x=>x.loc===S.inv&&x.date===date&&x.fr===fr&&x.no===it.no);if(ex){Object.assign(ex,nr);up++}else{S.rows.push(nr);add++}});
+  if(lastD)S.vd=lastD;const msg=`Imported: ${add} added, ${up} updated${skip?`, ${skip} skipped (date or item not recognised)`:''}.`;logc('entry','Imported',msg);save();renderEntry();return msg}
+function readRows(f,cb,fail){const xl=/\.xlsx?$/i.test(f.name),rd=new FileReader();
+  rd.onload=()=>{try{if(xl){if(!window.XLSX)return fail('Excel reading is not available here.');const wb=XLSX.read(rd.result,{type:'array'});cb(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''}))}else cb(parseCsv(rd.result))}catch(e){fail('Could not read that file.')}};
+  rd.onerror=()=>fail('Could not read that file.');xl?rd.readAsArrayBuffer(f):rd.readAsText(f)}
+$('deImp').onclick=()=>$('deFile').click();
+$('deFile').onchange=e=>{const f=e.target.files[0];if(!f)return;readRows(f,rows=>{$('eMsg').textContent=importEntries(rows)},m=>{$('eMsg').textContent=m});e.target.value=''};
+const cv=v=>{if(v==='-')return 0;let m=v.match(/^\((\d[\d,]*\.?\d*)\)$/);if(m)return -parseFloat(m[1].replace(/,/g,''));return /^-?\d[\d,]*\.?\d*$/.test(v)?parseFloat(v.replace(/,/g,'')):v};
+function summaryAoa(){const sm=$('sm'),h2=sm.querySelector('h2'),aoa=[[h2.firstChild.textContent],[h2.querySelector('span').textContent.replace(/\s+/g,' ')],[]];
+  sm.querySelectorAll('table').forEach(t=>{t.querySelectorAll('tr').forEach(tr=>{const r=[];tr.querySelectorAll('th,td').forEach(c=>{r.push(cv(c.textContent.trim()));for(let k=1;k<(+c.getAttribute('colspan')||1);k++)r.push('')});aoa.push(r)});aoa.push([])});
+  return aoa}
+$('sxBtn').onclick=()=>{const a=summaryAoa(),t=a[0][0];saveXlsx(a,t,t.toLowerCase().replace(/\s+/g,'-')+'.xlsx',[12,13],[30,11,10,11,11,14,10,14,9,12,11,11,10,12],m=>{$('sMsg').textContent=m})};
+
+/* ---------- Change history ---------- */
+function logc(tab,act,desc,date){S.log=S.log||[];const u=me();S.log.push({t:new Date().toISOString(),u:u?u.name:'(not signed in)',tab,act,desc,date:date||'',loc:S.inv});if(S.log.length>3000)S.log=S.log.slice(-3000);save();renderHist()}
+function histRows(){const L=S.log||[];
+  if(cur==='users'||cur==='setup'||cur==='master')return L.filter(x=>x.tab===cur);
+  if(cur==='entry')return L.filter(x=>x.tab==='entry'&&x.loc===S.inv);
+  if(cur==='cash')return L.filter(x=>x.tab==='cash'||(x.tab==='entry'&&x.loc===S.inv&&x.date>=S.start&&x.date<=S.cut)||x.tab==='master'||x.tab==='setup');
+  let a=S.start,b=S.cut;const m=/^w(\d+)$/.exec(cur);if(m){a=addDay(S.start,7*(m[1]-1));b=addDay(a,6);if(b>S.cut)b=S.cut}
+  return L.filter(x=>(x.tab==='entry'&&x.loc===S.inv&&x.date>=a&&x.date<=b)||x.tab==='master'||x.tab==='setup')}
+async function histClick(e){if(!canAdm())return;const id=e.target.dataset.hid;
+  if(id){const x=S.log.find(y=>y.id===id);if(!x)return;S.log=S.log.filter(y=>y.id!==id);logc('users','Deleted',`History entry removed: [${x.act}] ${x.desc||x.tab} (${x.u})`.slice(0,300));return}
+  if(e.target.dataset.hall){const rows=histRows();if(await ask(`Delete all ${rows.length} change history entries shown on this tab? This cannot be undone.`)){const ids=new Set(rows.map(y=>y.id));S.log=S.log.filter(y=>!ids.has(y.id));logc('users','Deleted',`${rows.length} history entries deleted from the ${cur} tab`)}}}
+$('delAllItems').onclick=async()=>{if(!canAdm())return;const n=S.items.length;if(!n)return;if(await ask(`Delete all ${n} items from the Item Master? Data Entry rows that use them will show blank item names.`)){logc('master','Deleted',`All ${n} items deleted`);S.items=[];save();renderMaster()}};
+$('delAllRows').onclick=async()=>{if(!canAdm())return;const n=S.rows.filter(r=>r.loc===S.inv).length;if(!n)return;
+  if(await ask(`Delete all ${n} entries for ${S.inv} (every date), including their Cash Details? This cannot be undone.`)){logc('entry','Deleted',`All ${n} entries for ${S.inv} deleted (all dates, with Cash Details)`);
+    S.rows=S.rows.filter(r=>r.loc!==S.inv);[S.cash,S.cinfo,S.cpay,S.nc||{}].forEach(o=>Object.keys(o).forEach(k=>{if(k.startsWith(S.inv+'|'))delete o[k]}));save();renderEntry()}};
+function renderHist(){const id=/^(w\d+|mo)$/.test(cur)?'summary':cur;if(!['users','setup','master','entry','summary','cash'].includes(id))return;
+  const sec=$('p-'+id);if(!sec)return;let h=$('hist-'+id);if(!h){h=document.createElement('div');h.id='hist-'+id;sec.appendChild(h);h.addEventListener('click',histClick)}
+  const adm=canAdm(),all=histRows();all.forEach(x=>{if(!x.id)x.id=rnd()});
+  const rows=all.slice().reverse(),W=adm?[16,14,13,52,5]:[16,14,13,57],open=h.firstChild&&h.firstChild.open;
+  h.innerHTML=`<details class="hist"${open?' open':''}><summary>Change History (${rows.length})</summary>`+(rows.length?(adm?`<div class="bar" style="margin:6px 0"><button class="btn" data-hall="1">Delete all ${rows.length} shown</button></div>`:'')+`<div>${stickyH(adm?['When','User','Action','Details','']:['When','User','Action','Details'],W)}<div class="scroll gt"><table>${colg(W)}<tbody>${rows.slice(0,200).map(x=>`<tr><td>${esc(new Date(x.t).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}))}</td><td>${esc(x.u)}</td><td>${esc(x.act)}</td><td>${esc(x.desc)}</td>${adm?`<td><button class="x" data-hid="${x.id}" title="Delete this history entry" aria-label="Delete history entry">×</button></td>`:''}</tr>`).join('')}</tbody></table></div></div>${rows.length>200?`<p class="note">Showing the latest 200 of ${rows.length} changes.</p>`:''}`:'<p class="note">No changes recorded yet.</p>')+'</details>'}
+const FL={code:'Item Code',sys:'System Description',desc:'Item Description',cat:'Category',srp:'SRP',loc:'Item Location',vat:'Cost Type',deliv:'Delivery Cost',wd:'Stock Withdrawal Cost',cv:'Conversion'};
+const fv=(k,v)=>['srp','deliv','wd'].includes(k)?f2(v):String(v??'');
+$('mb').addEventListener('focusin',e=>{const t=e.target;if(t.dataset.k!=null&&t.dataset.i!=null&&S.items[t.dataset.i])t.dataset.old=String(S.items[t.dataset.i][t.dataset.k]??'')});
+$('mb').addEventListener('change',e=>{const t=e.target,i=t.dataset.i,k=t.dataset.k;if(i==null||k==null||!S.items[i])return;const it=S.items[i],o=t.dataset.old,n=String(it[k]??'');
+  if(o!==undefined&&o!==n)logc('master','Changed',`Line ${it.no} (${it.desc||it.code||'blank'}) ${FL[k]}: "${fv(k,o)}" → "${fv(k,n)}"`);t.dataset.old=n});
+const EL={beg:'Beginning Inventory',del:'Deliveries',doc:'Document Number',wd:'Stock Withdrawal',tf:'Transfer from',tfl:'Transfer from Location',itf:'Internal Transfer From',tt:'Transfer To',ttl:'Transfer To Location',itt:'Internal Transfer To',bad:'Bad Order',end:'Ending Inventory'};
+$('eb').addEventListener('focusin',e=>{const t=e.target,i=t.dataset.i,k=t.dataset.k;if(i!=null&&EL[k]&&S.rows[i])t.dataset.old=String(S.rows[i][k]??'');if(t.id==='cdC')t.dataset.old=String(S.cash[cashKey(S.vd)]??'')});
+$('eb').addEventListener('change',e=>{const t=e.target,i=t.dataset.i,k=t.dataset.k;
+  if(t.id==='cdC'){const n=String(S.cash[cashKey(S.vd)]??''),o=t.dataset.old;if(o!==undefined&&o!==n)logc('entry','Changed',`${fd(S.vd)} ${S.vf} Cash on Hand: ${o===''?'(blank)':f2(o)} → ${n===''?'(blank)':f2(n)}`,S.vd);t.dataset.old=n;return}
+  if(i==null||!EL[k]||!S.rows[i])return;const r=S.rows[i],o=t.dataset.old,n=String(r[k]??'');
+  if(o!==undefined&&o!==n)logc('entry','Changed',`${fd(r.date)} ${r.fr} ${(item(r.no)||{}).desc||'(no item)'}: ${EL[k]} "${o||'blank'}" → "${n||'blank'}"`,r.date);t.dataset.old=n});
+
+/* ---------- Cash Details Summary ---------- */
+const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const acp=v=>{v=Math.round(num(v)*100)/100;return v===0?'-':v<0?`(${f2(-v)})`:f2(v)};
+function rangeSales(a,b){const C=comp(),g={};
+  S.rows.forEach((r,i)=>{if(r.loc===S.inv&&r.no!==''&&r.date>=a&&r.date<=b)(g[r.no]=g[r.no]||[]).push(i)});
+  return Object.keys(g).reduce((t,no)=>{const rs=g[no].sort((x,y)=>dcmp(S.rows[x].date,S.rows[y].date)||x-y),sm=c=>rs.reduce((q2,i)=>q2+num(S.rows[i][c]),0);
+    const tg=C[rs[0]].beg+sm('del')+sm('tf')+sm('itf')-sm('tt')-sm('itt'),sold=tg-num(S.rows[rs[rs.length-1]].end);return t+sold*num((item(no)||{}).srp)},0)}
+function cashModel(){
+  const n=weeksN(),C=comp(),cols=[],lines={};
+  S.rows.forEach((r,i)=>{if(r.loc===S.inv&&r.no!==''&&r.date)(lines[r.no]=lines[r.no]||[]).push(i)});
+  Object.keys(lines).forEach(no=>lines[no].sort((x,y)=>dcmp(S.rows[x].date,S.rows[y].date)||x-y));
+  for(let k=1;k<=n;k++){const a=addDay(S.start,7*(k-1));let b=addDay(a,6);if(b>S.cut)b=S.cut;
+    let beg=0,end=0;
+    Object.keys(lines).forEach(no=>{const ids=lines[no],srp=num((item(no)||{}).srp),before=ids.filter(i=>S.rows[i].date<a),inW=ids.filter(i=>S.rows[i].date>=a&&S.rows[i].date<=b),upto=ids.filter(i=>S.rows[i].date<=b);
+      beg+=(before.length?num(S.rows[before[before.length-1]].end):(inW.length?C[inW[0]].beg:0))*srp;end+=(upto.length?num(S.rows[upto[upto.length-1]].end):0)*srp});
+    const inR=S.rows.filter(r=>r.loc===S.inv&&r.no!==''&&r.date>=a&&r.date<=b),val=f=>inR.reduce((t,r)=>t+num(r[f])*num((item(r.no)||{}).srp),0);
+    const ks=Object.keys(S.cash).filter(q2=>{const[l,d]=ckParts(q2);return l===S.inv&&d>=a&&d<=b&&S.cash[q2]!==''});
+    cols.push({a,b,beg,del:val('del'),wd:val('wd'),tf:val('tf'),tt:val('tt'),bad:val('bad'),end,sales:rangeSales(a,b),cash:ks.reduce((t,q2)=>t+num(S.cash[q2]),0),pay:num(S.cpay[S.inv+'|'+a])})}
+  const T=f=>cols.reduce((t,c)=>t+c[f],0),sum={beg:cols.length?cols[0].beg:0,del:T('del'),wd:T('wd'),tf:T('tf'),tt:T('tt'),bad:T('bad'),end:cols.length?cols[cols.length-1].end:0,sales:T('sales'),cash:T('cash'),pay:T('pay')};
+  [...cols,sum].forEach(c=>{const ta=c.beg+c.del+c.wd+c.tf,td=c.tt+c.bad,vr=c.cash-c.sales;c.d={ta,td,net:ta-td,vr,bal:vr+c.pay}});
+  const mo=d=>`${MN[+d.slice(5,7)-1]} ${d.slice(0,4)}`;
+  return {cols,sum,month:S.start?(mo(S.start)+(S.cut&&S.cut.slice(0,7)!==S.start.slice(0,7)?' - '+mo(S.cut):'')):''}}
+const CROWS=[['Beginning Inventory',c=>c.beg],['Deliveries (+)',c=>c.del],['Stock Withdrawal (+)',c=>c.wd],['Transfer FROM (+)',c=>c.tf],['Total Available',c=>c.d.ta,1],['Transfer TO (-)',c=>c.tt],['Bad Order (-)',c=>c.bad],['Total to be deducted',c=>c.d.td,1],['Total Net Available Invty',c=>c.d.net,1],['Actual Ending Inventory',c=>c.end],['Should be - Sales',c=>c.sales],['Cash on Hand',c=>c.cash],['Variances (over/short)',c=>c.d.vr,1]];
+function osModel(){
+  const C=comp(),sales={},rows=[],weeks=Array.from({length:weeksN()},()=>({over:0,short:0,n:0})),tot={over:0,short:0,n:0};
+  S.rows.forEach((r,i)=>{if(r.loc===S.inv&&r.no!==''&&r.date){const k=r.date+'|'+(r.fr==='PM'?'PM':'AM');sales[k]=(sales[k]||0)+C[i].sales}});
+  const t0=Date.parse(S.start+'T00:00:00Z'),t1=Date.parse(S.cut+'T00:00:00Z');
+  if(!isNaN(t0)&&!isNaN(t1))for(let t=t0;t<=t1;t+=864e5){
+    const d=new Date(t).toISOString().slice(0,10),w=Math.floor((t-t0)/864e5/7);
+    ['AM','PM'].forEach(fr=>{const k=cashKey(d,fr),ck=S.cash[k],has=ck!==undefined&&ck!=='',os=has?Math.round((num(ck)-(sales[d+'|'+fr]||0))*100)/100:null;
+      rows.push({d,fr,os,cashier:(S.cinfo[k]||{}).cashier||''});
+      if(has&&weeks[w])[weeks[w],tot].forEach(x=>{x.n++;if(os>0)x.over+=os;else if(os<0)x.short+=os})})}
+  return{rows,weeks,tot}}
+function osHtml(){
+  const O=osModel(),sg=v=>v<0?'-'+f2(-v):f2(v),head=h=>`<thead><tr>${h.map(t=>`<th>${t}</th>`).join('')}</tr></thead>`;
+  const left=O.rows.map(r=>`<tr><td>${r.fr==='AM'?fd(r.d):''}</td><td>${r.fr}</td><td class="a${r.os<0?' neg':''}">${r.os?sg(r.os):''}</td><td>${esc(r.cashier)}</td></tr>`).join('');
+  const right=O.weeks.map((w,i)=>`<tr><td>Week ${i+1}</td><td class="a">${w.over?f2(w.over):''}</td><td class="a${w.short<0?' neg':''}">${w.short?sg(w.short):''}</td></tr>`).join('')
+   +`<tr class="tt"><td>Total</td><td class="a">${O.tot.over?f2(O.tot.over):''}</td><td class="a${O.tot.short<0?' neg':''}">${O.tot.short?sg(O.tot.short):''}</td></tr>`;
+  return `<div class="osw"><div class="osl"><h2>Over/Short Breakdown</h2><div class="scroll gt"><table>${head(['Date','Shift','Over/Short','Cashier Name'])}<tbody>${left}</tbody></table></div></div>`
+   +`<div class="osr"><h2>Summary</h2><div class="scroll gt"><table>${head(['Week','Over','Short'])}<tbody>${right}</tbody></table></div></div></div>`}
+function renderCash(){
+  const M=cashModel(),n=M.cols.length;if(!n){$('cs').innerHTML='<p class="empty">Set a Start Date and Cut Off Date in Setup to see this summary.</p>';return}
+  const W=[26,...Array(n+1).fill(74/(n+1))],all=[...M.cols,M.sum],cell=(v,x)=>`<td class="a${Math.round(v*100)<0?' neg':''}"${x||''}>${acp(v)}</td>`;
+  const rows=CROWS.map(([l,f,b])=>`<tr${b?' class="tt"':''}><td>${l}</td>${all.map(c=>cell(f(c))).join('')}</tr>`).join('')
+   +`<tr><td>Cashier Payment</td>${M.cols.map(c=>`<td><input type="text" inputmode="decimal" class="a" data-cp="${c.a}" value="${f2(c.pay)}" aria-label="Cashier payment"></td>`).join('')}<td class="a" data-sp>${f2(M.sum.pay)}</td></tr>`
+   +`<tr class="tt"><td>Balance</td>${M.cols.map(c=>cell(c.d.bal,` data-bal="${c.a}"`)).join('')}${cell(M.sum.d.bal,' data-sb')}</tr>`;
+  $('cs').innerHTML='<div>'+`<h2>${esc(S.inv)}<span>${esc(M.month)}</span></h2>`+stickyH(['',...M.cols.map((c,i)=>`Week ${i+1}`),'Summary'],W)+`<div class="scroll gt"><table>${colg(W)}<tbody>${rows}</tbody></table></div>`+'</div>'+osHtml()}
+$('cs').addEventListener('focusin',e=>{const t=e.target;if(t.dataset.cp!=null){t.dataset.old=String(S.cpay[S.inv+'|'+t.dataset.cp]??0);t.select()}});
+$('cs').addEventListener('input',e=>{const t=e.target;if(t.dataset.cp==null)return;const v=parseFloat(t.value.replace(/,/g,''));S.cpay[S.inv+'|'+t.dataset.cp]=isNaN(v)?0:v;save();
+  const M=cashModel();M.cols.forEach(c=>{const el=$('cs').querySelector(`[data-bal="${c.a}"]`);if(el){el.textContent=acp(c.d.bal);el.classList.toggle('neg',Math.round(c.d.bal*100)<0)}});
+  const ps=$('cs').querySelector('[data-sp]'),bs=$('cs').querySelector('[data-sb]');if(ps)ps.textContent=f2(M.sum.pay);if(bs){bs.textContent=acp(M.sum.d.bal);bs.classList.toggle('neg',Math.round(M.sum.d.bal*100)<0)}});
+$('cs').addEventListener('change',e=>{const t=e.target;if(t.dataset.cp==null)return;const k=S.inv+'|'+t.dataset.cp,n=num(S.cpay[k]),o=num(t.dataset.old);t.value=f2(n);
+  if(o!==n){const wk=Math.floor(Math.round((Date.parse(t.dataset.cp)-Date.parse(S.start))/864e5)/7)+1;logc('cash','Changed',`Week ${wk} Cashier Payment: ${f2(o)} → ${f2(n)}`)}t.dataset.old=String(n)});
+$('csx').onclick=()=>{const M=cashModel(),n=M.cols.length;if(!n)return;const all=[...M.cols,M.sum];
+  const aoa=[[S.inv],[M.month],[],['',...M.cols.map((c,i)=>`Week ${i+1}`),'Summary'],...CROWS.map(([l,f])=>[l,...all.map(c=>Math.round(f(c)*100)/100)]),['Cashier Payment',...all.map(c=>c.pay)],['Balance',...all.map(c=>Math.round(c.d.bal*100)/100)]];
+  const O=osModel(),mx=Math.max(O.rows.length,O.weeks.length+1);
+  aoa.push([],['Over/Short Breakdown','','','','','Summary'],['Date','Shift','Over/Short','Cashier Name','','Week','Over','Short']);
+  for(let i=0;i<mx;i++){const a=O.rows[i],w=O.weeks[i],r=a?[a.fr==='AM'?fd(a.d):'',a.fr,a.os||'',a.cashier,'']:['','','','',''];
+    if(w)r.push('Week '+(i+1),w.over||'',w.short||'');else if(i===O.weeks.length)r.push('Total',O.tot.over||'',O.tot.short||'');aoa.push(r)}
+  saveXlsx(aoa,'Cash Details Summary','cash-details-summary.xlsx',[...new Set([...Array.from({length:n+1},(_,i)=>i+1),2,6,7])],[28,...Array(Math.max(n+1,7)).fill(15)],m=>{$('csMsg').textContent=m})};
+
+/* ---------- Tabs ---------- */
+let cur='entry';
+function buildTabs(){const t=[['users','User Access'],['setup','Setup'],['master','Item Master'],['entry','Data Entry'],...Array.from({length:weeksN()},(_,k)=>['w'+(k+1),`Week ${k+1} Summary`]),['mo','Monthly Summary'],['cash','Cash Details Summary']];
+  $('tabs').innerHTML=t.map(([id,l])=>`<button class="tab" role="tab" data-t="${id}" aria-selected="${id===cur}">${l}</button>`).join('')}
+$('tabs').onclick=e=>{const t=e.target.dataset.t;if(t)show(t)};
+function show(t){const m=/^w(\d+)$/.exec(t);if(m&&+m[1]>weeksN())t='entry';if(t!=='entry')prune();else if(cur!=='entry'||!S.vd){S.vd=S.vd||defView();carry(S.vd,S.vf)}cur=t;buildTabs();dd.hidden=true;
+  const mo=t==='mo',sec=m||mo?'summary':t,deny=(sec==='entry'||sec==='summary'||sec==='cash')&&!canLoc(me(),S.inv);
+  ['users','setup','master','entry','summary','cash','acct','deny'].forEach(x=>$('p-'+x).hidden=x!==(deny?'deny':sec));
+  if(deny)$('denyMsg').textContent=`${me().name} does not have access to ${S.inv||'this location'}. Choose one of your locations under Setup, or switch user above.`;
+  else if(m)renderWeek(+t.slice(1));else if(mo)renderRange(S.start,S.cut,'Monthly Summary');else({users:renderUsers,setup:renderSetup,master:renderMaster,entry:renderEntry,cash:renderCash,acct:()=>{['pwOld','pwNew','pwNew2'].forEach(i=>$(i).value='');$('pwMsg').textContent=''}})[t]();
+  applyAccess();renderHist()}
+function boot(){const u=me();$('app').hidden=!u;$('login').hidden=!!u;dd.hidden=true;
+  if(u){upSub();show('entry')}else{$('lgErr').textContent='';$('lgReset').hidden=S.users.some(x=>x.user&&x.hash);$('lgUser').focus()}}
+document.addEventListener('click',e=>{const t=e.target;if(t&&t.type==='date'&&t.showPicker){try{t.showPicker()}catch(x){}}});
+boot();
+</script>
+</body>
+</html>
