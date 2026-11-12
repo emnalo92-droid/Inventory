@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   body {
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* Smooth transition for theme switching */
+  body, header, nav, main, table, th, td, input, select, button {
+    transition-property: color, background-color, border-color;
+    transition-duration: 200ms;
   }
 
   /* Numeric tabular fonts for tables */

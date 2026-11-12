@@ -1,4 +1,4 @@
-import { AppState, Item, Row, RowComputed, User, LogEntry } from '../types';
+import { AppState, Item, Row, RowComputed, User, LogEntry, CellNote } from '../types';
 
 export const KEY = 'inv_ledger_v1';
 export const V = 6;
@@ -315,7 +315,8 @@ export const getSeedState = (): AppState => ({
   cashiers: ['Lica Cudiamat', 'Marlyn Maruya', 'Godelyn Roncales'],
   cinfo: {},
   cpay: {},
-  users: SEED_USERS
+  users: SEED_USERS,
+  notes: {}
 });
 
 export const SEED_USERS: User[] = [
@@ -485,6 +486,7 @@ export function mergeStates(local: AppState, remote: AppState, clientLoc?: strin
     cashiers: Array.isArray(remote.cashiers) && remote.cashiers.length > 0 ? remote.cashiers : local.cashiers,
     locs: ensureLocations(Array.isArray(remote.locs) && remote.locs.length > 0 ? remote.locs : local.locs),
     log: Array.isArray(remote.log) ? remote.log : local.log,
+    notes: { ...(local.notes || {}), ...(remote.notes || {}) },
     // Keep this client's active branch location so another user's branch navigation does not hijack this user's screen
     inv: clientLoc || local.inv || remote.inv || 'Commissary Takehome',
     // Keep this client's active viewing date and shift
@@ -513,6 +515,7 @@ export function loadState(): AppState {
         if (!parsed.cinfo) parsed.cinfo = {};
         if (!parsed.cpay) parsed.cpay = {};
         if (!parsed.log) parsed.log = [];
+        if (!parsed.notes) parsed.notes = {};
         return parsed;
       }
     }

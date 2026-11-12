@@ -18,9 +18,10 @@ import {
   ChevronDown,
   ChevronUp,
   RotateCcw,
-  CheckCircle2
+  CheckCircle2,
+  StickyNote
 } from 'lucide-react';
-import { AppState, Item, Row, User, PresenceUser } from '../types';
+import { AppState, Item, Row, User, PresenceUser, CellNote } from '../types';
 import {
   acct,
   addDay,
@@ -54,6 +55,7 @@ interface CalculatorCellInputProps {
   className?: string;
   title?: string;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  hasNote?: boolean;
 }
 
 export const CalculatorCellInput: React.FC<CalculatorCellInputProps> = ({
@@ -63,7 +65,8 @@ export const CalculatorCellInput: React.FC<CalculatorCellInputProps> = ({
   placeholder = '',
   className = '',
   title,
-  onKeyDown
+  onKeyDown,
+  hasNote = false
 }) => {
   const [text, setText] = useState<string>(raw(value) !== '' ? String(raw(value)) : '');
   const [isFocused, setIsFocused] = useState(false);
@@ -137,7 +140,11 @@ export const CalculatorCellInput: React.FC<CalculatorCellInputProps> = ({
           }
         }}
         onKeyDown={handleKeyDown}
-        className={className}
+        className={`${className} ${
+          hasNote
+            ? 'bg-transparent! text-slate-900! dark:text-slate-900! font-semibold'
+            : ''
+        }`}
       />
       {isFocused && isFormula && (
         <div className="absolute z-40 bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 rounded shadow-lg bg-slate-900/95 dark:bg-slate-950/95 text-teal-300 border border-teal-500/60 text-[9.5px] font-mono whitespace-nowrap pointer-events-none flex items-center gap-1 backdrop-blur-xs">
@@ -255,6 +262,99 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
   const encoderDropdownRef = useRef<HTMLDivElement>(null);
   const highlightedEncoderItemRef = useRef<HTMLDivElement>(null);
   const [lastEncodedItemNo, setLastEncodedItemNo] = useState<number | null>(null);
+
+  // Cell Notes state & handlers (all users can add/edit notes to specific cells)
+  const [noteModal, setNoteModal] = useState<{
+    isOpen: boolean;
+    cellKey: string;
+    cellLabel: string;
+    currentText: string;
+    author?: string;
+    timestamp?: number;
+  } | null>(null);
+
+  const getCellKey = (r: Row, col: string, rowIndex?: number): string => {
+    const itemPart = r.no !== '' && r.no !== undefined ? `item_${r.no}` : (r._id || `row_${rowIndex ?? 0}`);
+    return `${r.loc || state.inv}|${r.date}|${r.fr}|${itemPart}|${col}`;
+  };
+
+  const getCellNote = (cellKey: string): CellNote | undefined => {
+    return state.notes?.[cellKey];
+  };
+
+  const handleOpenNoteModal = (cellKey: string, cellLabel: string) => {
+    const existing = state.notes?.[cellKey];
+    setNoteModal({
+      isOpen: true,
+      cellKey,
+      cellLabel,
+      currentText: existing ? existing.text : '',
+      author: existing?.author,
+      timestamp: existing?.timestamp
+    });
+  };
+
+  const handleSaveNote = (cellKey: string, text: string, cellLabel: string) => {
+    const trimmed = text.trim();
+    const authorName = currentUser?.name || currentUser?.user || 'Staff';
+    onUpdateState(prev => {
+      const nextNotes = { ...(prev.notes || {}) };
+      if (!trimmed) {
+        delete nextNotes[cellKey];
+      } else {
+        nextNotes[cellKey] = {
+          text: trimmed,
+          author: authorName,
+          timestamp: Date.now()
+        };
+      }
+      return {
+        ...prev,
+        notes: nextNotes
+      };
+    }, trimmed ? `Note updated on ${cellLabel}` : `Note removed from ${cellLabel}`);
+    setNoteModal(null);
+  };
+
+  const handleDeleteNote = (cellKey: string, cellLabel: string) => {
+    onUpdateState(prev => {
+      const nextNotes = { ...(prev.notes || {}) };
+      delete nextNotes[cellKey];
+      return {
+        ...prev,
+        notes: nextNotes
+      };
+    }, `Note removed from ${cellLabel}`);
+    setNoteModal(null);
+  };
+
+  const renderCellNoteIndicator = (cellKey: string, cellLabel: string, note?: CellNote) => (
+    <>
+      {note && (
+        <div
+          className="absolute top-0 right-0 w-2.5 h-2.5 overflow-hidden pointer-events-none z-10"
+          title={`Note by ${note.author} (${new Date(note.timestamp).toLocaleDateString()}): "${note.text}" (Right-click to edit)`}
+        >
+          <div className="w-3.5 h-3.5 bg-amber-500 rotate-45 -translate-y-2 translate-x-1 shadow-xs" />
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleOpenNoteModal(cellKey, cellLabel);
+        }}
+        className={`absolute top-0.5 right-0.5 p-0.5 rounded transition-opacity z-20 cursor-pointer ${
+          note
+            ? 'opacity-0 group-hover:opacity-100 bg-amber-300 dark:bg-amber-400 text-amber-950 shadow-xs'
+            : 'opacity-0 group-hover:opacity-75 bg-slate-200/90 dark:bg-slate-700/90 text-slate-700 dark:text-slate-200 hover:opacity-100'
+        }`}
+        title={note ? `Note: "${note.text}" by ${note.author}. Click to edit.` : 'Add note to this cell (Right-click or click)'}
+      >
+        <StickyNote className="w-2.5 h-2.5" />
+      </button>
+    </>
+  );
 
   // Computations
   const computed = computeRows(state.rows, state.items);
@@ -1472,6 +1572,20 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
 
         {/* Right: Actions */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Cell Notes highlight indicator info */}
+          <div
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 shadow-xs"
+            title="Right-click or hover any cell to add/edit notes. Cell notes automatically highlight in Light Gray (#ECECEC) in light mode and Light Yellow (#FFFFEB) in dark mode."
+          >
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ECECEC] dark:bg-[#FFFFEB] border border-amber-400"></span>
+              <StickyNote className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="font-semibold text-slate-800 dark:text-slate-200">Cell Notes</span>
+            </span>
+            <span className="text-slate-400 hidden xl:inline">·</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden xl:inline">Right-click any cell to add note</span>
+          </div>
+
           {canEdit && (
             <button
               type="button"
@@ -1557,25 +1671,25 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
       )}
 
       {/* Quick Encoding Table (Placed directly above the main inventory table for easy encoding) */}
-      <div className="relative rounded-xl border border-teal-600/40 dark:border-teal-500/30 bg-slate-900 shadow-md overflow-hidden">
+      <div className="relative rounded-xl border border-slate-300 dark:border-teal-500/30 bg-white dark:bg-slate-900 shadow-xs overflow-hidden transition-colors duration-200">
         {/* Header Title Bar */}
-        <div className="flex flex-wrap items-center justify-between px-3 py-2 bg-slate-950/80 border-b border-slate-800 gap-2">
+        <div className="flex flex-wrap items-center justify-between px-3 py-2 bg-slate-100/90 dark:bg-slate-950/80 border-b border-slate-300 dark:border-slate-800 gap-2 transition-colors duration-200">
           <div className="flex items-center gap-2">
             <span className="flex h-5 w-5 items-center justify-center rounded bg-teal-600 text-white font-bold text-[11px] shadow-xs">
               <Sparkles className="w-3 h-3" />
             </span>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-100 tracking-wide uppercase">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 tracking-wide uppercase">
                 Quick Encoding Table
               </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-950 text-teal-300 border border-teal-700">
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-700">
                 Easy Encoding Bar
               </span>
               {encoderSelected && (
                 <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
                   encoderExisting
-                    ? 'bg-amber-950/70 text-amber-300 border-amber-700'
-                    : 'bg-emerald-950/70 text-emerald-300 border-emerald-700'
+                    ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                    : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
                 }`}>
                   {encoderExisting ? '● Will update existing item in table below' : '+ Will add new item to table below'}
                 </span>
@@ -1584,14 +1698,14 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400 hidden sm:inline">
-              Enter details below · press <kbd className="px-1 py-0.5 text-[9.5px] font-mono bg-slate-800 border border-slate-700 rounded text-slate-200">Enter</kbd> to add to inventory table
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:inline">
+              Enter details below · press <kbd className="px-1 py-0.5 text-[9.5px] font-mono bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded text-slate-700 dark:text-slate-200">Enter</kbd> to add to inventory table
             </span>
             {encoderForm.itemNo !== '' && (
               <button
                 type="button"
                 onClick={handleResetEncoder}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded border border-slate-700 cursor-pointer transition-colors"
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-200/70 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 rounded border border-slate-300 dark:border-slate-700 cursor-pointer transition-colors"
                 title="Clear current encoding inputs"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -1601,7 +1715,7 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
             <button
               type="button"
               onClick={() => setEncoderOpen(!encoderOpen)}
-              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded shadow-xs cursor-pointer transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 bg-slate-200/70 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded shadow-xs cursor-pointer transition-colors"
             >
               {encoderOpen ? (
                 <>
@@ -1621,51 +1735,51 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
         {/* The Encoding Table with Exact Same Header as Main Table */}
         {encoderOpen && (
           <div className="w-full overflow-x-hidden">
-            <table className="w-full table-fixed border-collapse text-[10px] sm:text-[11px] 2xl:text-xs leading-tight font-sans">
+            <table className="w-full table-fixed border-collapse text-[10px] sm:text-[11px] 2xl:text-xs leading-tight font-sans transition-colors duration-200">
               <colgroup>
                 {['5.6%', '3.5%', '13.5%', '4.5%', '4.4%', '5.0%', '4.4%', '4.3%', '6.0%', '4.4%', '4.3%', '6.0%', '4.4%', '3.9%', '5.0%', '4.5%', '4.8%', '4.5%', '6.5%', '5.0%'].map((w, idx) => (
                   <col key={idx} style={{ width: w }} />
                 ))}
               </colgroup>
-              <thead className="bg-[#0b1424] text-slate-100 font-semibold shadow-xs">
-                <tr className="border-b border-slate-700/80">
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Date</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Wk</th>
-                  <th className="py-2 px-1 text-left border-r border-slate-700/80">Item Description</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Beg Inv</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Deliv</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Doc #</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Stock W/D</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">TF From</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">From Loc</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Int TF (In)</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Transfer To</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">To Loc</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Int TT (Out)</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Bad Order</th>
-                  <th className="py-2 px-0.5 text-center bg-teal-950/80 text-teal-200 border-r border-slate-700/80 font-semibold">Goods Avail</th>
-                  <th className="py-2 px-0.5 text-center border-r border-slate-700/80">Ending Inv</th>
-                  <th className="py-2 px-0.5 text-center bg-teal-950/80 text-teal-200 border-r border-slate-700/80 font-semibold">Goods Sold</th>
-                  <th className="py-2 px-0.5 text-right border-r border-slate-700/80">SRP</th>
-                  <th className="py-2 px-1 text-right bg-teal-950/80 text-teal-200 font-semibold border-r border-slate-700/80">Total Sales</th>
+              <thead className="bg-slate-200/90 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-semibold shadow-xs transition-colors duration-200">
+                <tr className="border-b border-slate-300 dark:border-slate-700">
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Date</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Wk</th>
+                  <th className="py-2 px-1 text-left border-r border-slate-300 dark:border-slate-700">Item Description</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Beg Inv</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Deliv</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Doc #</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Stock W/D</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">TF From</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">From Loc</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Int TF (In)</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Transfer To</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">To Loc</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Int TT (Out)</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Bad Order</th>
+                  <th className="py-2 px-0.5 text-center bg-teal-100/90 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 border-r border-slate-300 dark:border-slate-700 font-semibold">Goods Avail</th>
+                  <th className="py-2 px-0.5 text-center border-r border-slate-300 dark:border-slate-700">Ending Inv</th>
+                  <th className="py-2 px-0.5 text-center bg-teal-100/90 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 border-r border-slate-300 dark:border-slate-700 font-semibold">Goods Sold</th>
+                  <th className="py-2 px-0.5 text-right border-r border-slate-300 dark:border-slate-700">SRP</th>
+                  <th className="py-2 px-1 text-right bg-teal-100/90 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 font-semibold border-r border-slate-300 dark:border-slate-700">Total Sales</th>
                   <th className="py-2 px-0.5 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody className="bg-slate-900/90 text-slate-100">
-                <tr className="border-b border-slate-700/80 hover:bg-slate-850 transition-colors">
+              <tbody className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+                <tr className="border-b border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-850 transition-colors duration-200">
                   {/* Date */}
-                  <td className="py-1.5 px-0.5 text-center font-mono text-[9.5px] 2xl:text-[10.5px] text-slate-300 border-r border-slate-700/80 bg-slate-950/40">
-                    <div className="font-semibold text-slate-200">{fd(currentDate)}</div>
-                    <div className="text-[8.5px] text-teal-400 font-bold">{currentShift}</div>
+                  <td className="py-1.5 px-0.5 text-center font-mono text-[9.5px] 2xl:text-[10.5px] text-slate-700 dark:text-slate-300 border-r border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/40 transition-colors duration-200">
+                    <div className="font-semibold text-slate-800 dark:text-slate-200">{fd(currentDate)}</div>
+                    <div className="text-[8.5px] text-teal-600 dark:text-teal-400 font-bold">{currentShift}</div>
                   </td>
 
                   {/* Wk */}
-                  <td className="py-1.5 px-0.5 text-center font-mono text-[9px] 2xl:text-[10px] text-slate-400 border-r border-slate-700/80 bg-slate-950/40">
+                  <td className="py-1.5 px-0.5 text-center font-mono text-[9px] 2xl:text-[10px] text-slate-600 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/40 transition-colors duration-200">
                     {getWeekOf(currentDate, state.start, state.cut)}
                   </td>
 
                   {/* Item Description Search / Selector */}
-                  <td className="p-0.5 border-r border-slate-700/80 relative">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700 relative">
                     <div className="relative">
                       <input
                         ref={encoderItemInputRef}
@@ -1674,7 +1788,6 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                         placeholder="Type letter to preview items..."
                         value={encoderForm.itemSearch}
                         onFocus={e => {
-                          // Do not automatically show preview if no letters typed or item is already chosen
                           if (encoderForm.itemNo === '' && encoderForm.itemSearch.trim().length > 0) {
                             setShowEncoderItemDropdown(true);
                             updateEncoderDropdownCoords(e.currentTarget);
@@ -1720,7 +1833,7 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             setEncoderDropdownCoords(null);
                           }
                         }}
-                        className="w-full px-1.5 py-1 text-xs font-medium rounded bg-slate-800 text-white placeholder-slate-400 border border-slate-600 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                        className="w-full px-1.5 py-1 text-xs font-medium rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none transition-colors duration-200"
                       />
                       {encoderForm.itemSearch !== '' && (
                         <button
@@ -1733,7 +1846,7 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                               encoderItemInputRef.current.focus();
                             }
                           }}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer font-bold"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs cursor-pointer font-bold"
                           title="Clear search / item"
                         >
                           ×
@@ -1743,31 +1856,31 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                   </td>
 
                   {/* Beg Inv */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.beg}
                       onChange={val => setEncoderForm(prev => ({ ...prev, beg: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-slate-800 text-white placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* Deliv */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.del}
                       onChange={val => setEncoderForm(prev => ({ ...prev, del: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono font-bold text-teal-300 bg-slate-800 placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono font-bold text-teal-700 dark:text-teal-300 bg-white dark:bg-slate-800 placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* Doc # */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <input
                       type="text"
                       placeholder="DR#"
@@ -1775,36 +1888,36 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                       value={encoderForm.doc}
                       onChange={e => setEncoderForm(prev => ({ ...prev, doc: e.target.value }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[9.5px] bg-slate-800 text-white placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[9.5px] bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* Stock W/D */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.wd}
                       onChange={val => setEncoderForm(prev => ({ ...prev, wd: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-slate-800 text-white placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* TF From */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.tf}
                       onChange={val => setEncoderForm(prev => ({ ...prev, tf: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-slate-800 text-white placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* From Loc */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     {(() => {
                       const parsed = parseTransferLocations(encoderForm.tfl, encoderForm.tf_locs, encoderForm.tf);
                       if (parsed.length > 1) {
@@ -1812,7 +1925,7 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                           <button
                             type="button"
                             onClick={() => openEncoderMultiLocModal('tf')}
-                            className="w-full flex items-center justify-center gap-1 py-1 px-1 rounded text-[9px] font-semibold bg-teal-900/60 text-teal-300 border border-teal-700 truncate cursor-pointer hover:bg-teal-800/80"
+                            className="w-full flex items-center justify-center gap-1 py-1 px-1 rounded text-[9px] font-semibold bg-teal-100 dark:bg-teal-900/60 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-700 truncate cursor-pointer hover:bg-teal-200 dark:hover:bg-teal-800/80 transition-colors"
                             title={`Multi-Location: ${parsed.map(p => `${p.loc}: ${p.qty}`).join(', ')}`}
                           >
                             <Layers className="w-2.5 h-2.5 shrink-0" />
@@ -1826,11 +1939,11 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             disabled={!canEdit}
                             value={encoderForm.tfl}
                             onChange={e => setEncoderForm(prev => ({ ...prev, tfl: e.target.value }))}
-                            className="w-full min-w-0 px-0.5 py-1 text-[9px] 2xl:text-[9.5px] bg-slate-800 text-white rounded border border-slate-700 focus:border-teal-500 focus:outline-none truncate"
+                            className="w-full min-w-0 px-0.5 py-1 text-[9px] 2xl:text-[9.5px] bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none truncate transition-colors duration-200"
                           >
                             <option value="">(Select)</option>
                             {state.locs.map(l => (
-                              <option key={l} value={l} className="bg-slate-900 text-white">
+                              <option key={l} value={l} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                                 {l}
                               </option>
                             ))}
@@ -1839,7 +1952,7 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             <button
                               type="button"
                               onClick={() => openEncoderMultiLocModal('tf')}
-                              className="p-0.5 text-slate-400 hover:text-teal-400 rounded cursor-pointer shrink-0"
+                              className="p-0.5 text-slate-500 hover:text-teal-600 dark:text-slate-400 dark:hover:text-teal-400 rounded cursor-pointer shrink-0 transition-colors"
                               title="Record multiple source branches"
                             >
                               <Layers className="w-2.5 h-2.5" />
@@ -1851,31 +1964,31 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                   </td>
 
                   {/* Int TF (In) */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.itf}
                       onChange={val => setEncoderForm(prev => ({ ...prev, itf: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-slate-800 text-white placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* Transfer To */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.tt}
                       onChange={val => setEncoderForm(prev => ({ ...prev, tt: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-slate-800 text-white placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* To Loc */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     {(() => {
                       const parsed = parseTransferLocations(encoderForm.ttl, encoderForm.tt_locs, encoderForm.tt);
                       if (parsed.length > 1) {
@@ -1883,7 +1996,7 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                           <button
                             type="button"
                             onClick={() => openEncoderMultiLocModal('tt')}
-                            className="w-full flex items-center justify-center gap-1 py-1 px-1 rounded text-[9px] font-semibold bg-rose-950/60 text-rose-300 border border-rose-800 truncate cursor-pointer hover:bg-rose-900/80"
+                            className="w-full flex items-center justify-center gap-1 py-1 px-1 rounded text-[9px] font-semibold bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800 truncate cursor-pointer hover:bg-rose-200 dark:hover:bg-rose-900/80 transition-colors"
                             title={`Multi-Location: ${parsed.map(p => `${p.loc}: ${p.qty}`).join(', ')}`}
                           >
                             <Layers className="w-2.5 h-2.5 shrink-0" />
@@ -1897,11 +2010,11 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             disabled={!canEdit}
                             value={encoderForm.ttl}
                             onChange={e => setEncoderForm(prev => ({ ...prev, ttl: e.target.value }))}
-                            className="w-full min-w-0 px-0.5 py-1 text-[9px] 2xl:text-[9.5px] bg-slate-800 text-white rounded border border-slate-700 focus:border-teal-500 focus:outline-none truncate"
+                            className="w-full min-w-0 px-0.5 py-1 text-[9px] 2xl:text-[9.5px] bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none truncate transition-colors duration-200"
                           >
                             <option value="">(Select)</option>
                             {state.locs.map(l => (
-                              <option key={l} value={l} className="bg-slate-900 text-white">
+                              <option key={l} value={l} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                                 {l}
                               </option>
                             ))}
@@ -1910,7 +2023,7 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             <button
                               type="button"
                               onClick={() => openEncoderMultiLocModal('tt')}
-                              className="p-0.5 text-slate-400 hover:text-rose-400 rounded cursor-pointer shrink-0"
+                              className="p-0.5 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 rounded cursor-pointer shrink-0 transition-colors"
                               title="Record multiple destination branches"
                             >
                               <Layers className="w-2.5 h-2.5" />
@@ -1922,58 +2035,58 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                   </td>
 
                   {/* Int TT (Out) */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.itt}
                       onChange={val => setEncoderForm(prev => ({ ...prev, itt: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-slate-800 text-white placeholder-slate-500 rounded border border-slate-700 focus:border-teal-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* Bad Order */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.bad}
                       onChange={val => setEncoderForm(prev => ({ ...prev, bad: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono text-rose-300 bg-slate-800 placeholder-slate-500 rounded border border-slate-700 focus:border-rose-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono text-rose-600 dark:text-rose-300 bg-white dark:bg-slate-800 placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-rose-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* Goods Avail */}
-                  <td className="py-2 px-0.5 text-center font-mono font-bold text-[10.5px] bg-teal-950/40 text-teal-300 border-r border-slate-700/80">
+                  <td className="py-2 px-0.5 text-center font-mono font-bold text-[10.5px] bg-teal-100/90 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 border-r border-slate-300 dark:border-slate-700 transition-colors duration-200">
                     {encoderCalculated.tg > 0 ? f2(encoderCalculated.tg) : '-'}
                   </td>
 
                   {/* Ending Inv */}
-                  <td className="p-0.5 border-r border-slate-700/80">
+                  <td className="p-0.5 border-r border-slate-300 dark:border-slate-700">
                     <CalculatorCellInput
                       placeholder="0"
                       disabled={!canEdit}
                       value={encoderForm.end}
                       onChange={val => setEncoderForm(prev => ({ ...prev, end: val }))}
                       onKeyDown={handleEncoderKeyDown}
-                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono font-bold bg-slate-800 text-amber-300 placeholder-slate-500 rounded border border-slate-700 focus:border-amber-500 focus:outline-none"
+                      className="w-full text-center px-0.5 py-1 text-[10.5px] font-mono font-bold bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded border border-slate-300 dark:border-slate-700 focus:border-teal-500 focus:outline-none transition-colors duration-200"
                     />
                   </td>
 
                   {/* Goods Sold */}
-                  <td className="py-2 px-0.5 text-center font-mono font-bold text-[10.5px] bg-teal-950/40 text-teal-300 border-r border-slate-700/80">
+                  <td className="py-2 px-0.5 text-center font-mono font-bold text-[10.5px] bg-teal-100/90 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 border-r border-slate-300 dark:border-slate-700 transition-colors duration-200">
                     {encoderCalculated.sold > 0 ? f2(encoderCalculated.sold) : '-'}
                   </td>
 
                   {/* SRP */}
-                  <td className="py-2 px-0.5 text-right font-mono text-[10px] text-slate-300 border-r border-slate-700/80">
+                  <td className="py-2 px-0.5 text-right font-mono text-[10px] text-slate-700 dark:text-slate-300 border-r border-slate-300 dark:border-slate-700 transition-colors duration-200">
                     {encoderCalculated.srp > 0 ? `₱${f2(encoderCalculated.srp)}` : '-'}
                   </td>
 
                   {/* Total Sales */}
-                  <td className="py-2 px-1 text-right font-mono font-bold text-[10.5px] bg-teal-950/40 text-teal-200 border-r border-slate-700/80">
+                  <td className="py-2 px-1 text-right font-mono font-bold text-[10.5px] bg-teal-100/90 dark:bg-teal-950/80 text-teal-900 dark:text-teal-200 border-r border-slate-300 dark:border-slate-700 transition-colors duration-200">
                     {encoderCalculated.sales > 0 ? `₱${acct(encoderCalculated.sales)}` : '-'}
                   </td>
 
@@ -2009,10 +2122,10 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
 
             {/* Live Items Preview Section Below the Encoding Table when typing letters */}
             {encoderForm.itemSearch.trim() && encoderForm.itemNo === '' && (
-              <div className="p-3 bg-slate-950/95 border-t border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
+              <div className="p-3 bg-slate-100/70 dark:bg-slate-950/95 border-t border-slate-300 dark:border-slate-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 text-xs animate-in fade-in duration-150 text-slate-800 dark:text-slate-100 transition-colors duration-200">
                 {matchingEncoderItems.length === 0 ? (
-                  <div className="flex items-center gap-2 text-slate-400 italic py-1 px-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 italic py-1 px-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
                     <span>No items match "{encoderForm.itemSearch}". Try typing another letter or keyword.</span>
                   </div>
                 ) : (
@@ -2023,31 +2136,31 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                       const topMatchPrevEnd = getPreviousEndingInventory(topItem.no, state.inv, currentDate, currentShift, state.rows);
 
                       return (
-                        <div className="flex-1 flex items-center gap-3 bg-slate-900 border border-teal-500/40 rounded-lg p-2.5 shadow-sm">
-                          <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-300 flex items-center justify-center shrink-0">
+                        <div className="flex-1 flex items-center gap-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-teal-500/30 rounded-lg p-2.5 shadow-xs transition-colors duration-200">
+                          <div className="w-8 h-8 rounded-lg bg-teal-500/15 dark:bg-teal-500/20 text-teal-600 dark:text-teal-300 flex items-center justify-center shrink-0">
                             <Sparkles className="w-4 h-4" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-[10px] uppercase font-bold tracking-wider text-teal-400">Top Match Preview</span>
-                              <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded font-mono">#{topItem.no}</span>
-                              <span className="text-[9px] bg-teal-950/80 text-teal-300 border border-teal-800 px-1.5 py-0.2 rounded font-medium">{topItem.cat}</span>
+                              <span className="text-[10px] uppercase font-bold tracking-wider text-teal-700 dark:text-teal-400">Top Match Preview</span>
+                              <span className="text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-1.5 py-0.2 rounded font-mono border border-slate-200 dark:border-slate-700">#{topItem.no}</span>
+                              <span className="text-[9px] bg-teal-100 dark:bg-teal-950/80 text-teal-800 dark:text-teal-300 border border-teal-300 dark:border-teal-800 px-1.5 py-0.2 rounded font-medium">{topItem.cat}</span>
                               {topMatchPrevEnd !== null && (
-                                <span className="text-[9px] bg-sky-500/20 text-sky-300 border border-sky-500/40 px-1.5 py-0.2 rounded font-bold font-mono">
+                                <span className="text-[9px] bg-sky-100 dark:bg-sky-500/20 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-500/40 px-1.5 py-0.2 rounded font-bold font-mono">
                                   Beg Inv: {topMatchPrevEnd > 0 ? topMatchPrevEnd : '0 (Sold Out)'}
                                 </span>
                               )}
                               {currentRowsWithIndex.some(x => x.r.no === topItem.no) && (
-                                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 rounded font-semibold">● In table below</span>
+                                <span className="text-[9px] bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/40 px-1.5 py-0.2 rounded font-semibold">● In table below</span>
                               )}
                             </div>
-                            <div className="text-sm font-bold text-white truncate mt-0.5">
+                            <div className="text-sm font-bold text-slate-900 dark:text-white truncate mt-0.5">
                               {highlightMatch(topItem.desc, encoderForm.itemSearch)}
                             </div>
                           </div>
                           <div className="text-right shrink-0 pr-1">
-                            <div className="text-[10px] text-slate-400">SRP</div>
-                            <div className="text-sm font-mono font-bold text-teal-300">₱{f2(topItem.srp)}</div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">SRP</div>
+                            <div className="text-sm font-mono font-bold text-teal-700 dark:text-teal-300">₱{f2(topItem.srp)}</div>
                           </div>
                           <button
                             type="button"
@@ -2064,9 +2177,9 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                     {/* Quick Suggestions Strip (other matching items) */}
                     {matchingEncoderItems.length > 1 && (
                       <div className="flex-1 max-w-xl">
-                        <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                           <span>Other Matching Items ({matchingEncoderItems.length - 1})</span>
-                          <span className="text-[9px] text-slate-500">Click to encode</span>
+                          <span className="text-[9px] text-slate-400 dark:text-slate-500">Click to encode</span>
                         </div>
                         <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto">
                           {matchingEncoderItems.slice(1, 7).map(it => {
@@ -2078,16 +2191,16 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                                 key={it.no}
                                 type="button"
                                 onClick={() => handleSelectEncoderItem(it.no)}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-teal-500 text-left cursor-pointer transition-colors text-[11px] group"
+                                className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:border-teal-500 text-left cursor-pointer transition-colors duration-200 text-[11px] group"
                                 title={`Select ${it.desc}${itPrevEnd !== null ? ` (Beg Inv: ${itPrevEnd})` : ''}`}
                               >
-                                <span className="font-medium text-slate-200 group-hover:text-teal-300 truncate max-w-[120px]">{it.desc}</span>
+                                <span className="font-medium text-slate-800 group-hover:text-teal-700 dark:text-slate-200 dark:group-hover:text-teal-300 truncate max-w-[120px]">{it.desc}</span>
                                 {itPrevEnd !== null && (
-                                  <span className="text-[9px] font-mono text-sky-300 bg-sky-950/70 px-1 py-0.2 rounded border border-sky-850 shrink-0">
+                                  <span className="text-[9px] font-mono text-sky-800 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/70 px-1 py-0.2 rounded border border-sky-300 dark:border-sky-850 shrink-0">
                                     Beg: {itPrevEnd > 0 ? itPrevEnd : '0 (Sold Out)'}
                                   </span>
                                 )}
-                                <span className="font-mono text-[10px] text-teal-400 font-bold shrink-0">₱{f2(it.srp)}</span>
+                                <span className="font-mono text-[10px] text-teal-700 dark:text-teal-400 font-bold shrink-0">₱{f2(it.srp)}</span>
                                 {inTable && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="In table below" />}
                               </button>
                             );
@@ -2245,6 +2358,44 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                         const itObj = state.items.find(x => x.no === r.no);
                         const isSoldOut = c.tg > 0 && num(r.end) === 0;
                         const isJustEncoded = lastEncodedItemNo !== null && r.no === lastEncodedItemNo;
+                        const itemDesc = itObj ? itObj.desc : (r.no !== '' ? `Item #${r.no}` : `Row #${i + 1}`);
+
+                        // Cell Note keys and notes for every cell in this row
+                        const descKey = getCellKey(r, 'desc', i);
+                        const begKey = getCellKey(r, 'beg', i);
+                        const delKey = getCellKey(r, 'del', i);
+                        const docKey = getCellKey(r, 'doc', i);
+                        const wdKey = getCellKey(r, 'wd', i);
+                        const tfKey = getCellKey(r, 'tf', i);
+                        const tflKey = getCellKey(r, 'tfl', i);
+                        const itfKey = getCellKey(r, 'itf', i);
+                        const ttKey = getCellKey(r, 'tt', i);
+                        const ttlKey = getCellKey(r, 'ttl', i);
+                        const ittKey = getCellKey(r, 'itt', i);
+                        const badKey = getCellKey(r, 'bad', i);
+                        const tgKey = getCellKey(r, 'tg', i);
+                        const endKey = getCellKey(r, 'end', i);
+                        const soldKey = getCellKey(r, 'sold', i);
+                        const srpKey = getCellKey(r, 'srp', i);
+                        const salesKey = getCellKey(r, 'sales', i);
+
+                        const descNote = getCellNote(descKey);
+                        const begNote = getCellNote(begKey);
+                        const delNote = getCellNote(delKey);
+                        const docNote = getCellNote(docKey);
+                        const wdNote = getCellNote(wdKey);
+                        const tfNote = getCellNote(tfKey);
+                        const tflNote = getCellNote(tflKey);
+                        const itfNote = getCellNote(itfKey);
+                        const ttNote = getCellNote(ttKey);
+                        const ttlNote = getCellNote(ttlKey);
+                        const ittNote = getCellNote(ittKey);
+                        const badNote = getCellNote(badKey);
+                        const tgNote = getCellNote(tgKey);
+                        const endNote = getCellNote(endKey);
+                        const soldNote = getCellNote(soldKey);
+                        const srpNote = getCellNote(srpKey);
+                        const salesNote = getCellNote(salesKey);
 
                         return (
                           <tr
@@ -2266,7 +2417,17 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             </td>
 
                             {/* Item Description (Interactive with Real-time Preview while typing letters or numbers) */}
-                            <td className="p-0.5 border-r border-slate-200 dark:border-slate-800 relative">
+                            <td
+                              className={`p-0.5 border-r border-slate-200 dark:border-slate-800 relative group ${
+                                descNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(descKey, `${itemDesc} - Description`);
+                              }}
+                              title={descNote ? `Note: "${descNote.text}" (${descNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(descKey, `${itemDesc} - Description`, descNote)}
                               <div className="relative flex items-center gap-1">
                                 <input
                                   type="text"
@@ -2318,7 +2479,9 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                                     }
                                   }}
                                   className={`w-full min-w-0 px-1 py-0.5 text-[10px] 2xl:text-[11px] font-medium bg-transparent border rounded focus:outline-none truncate transition-colors ${
-                                    activeItemSearchIndex === i
+                                    descNote
+                                      ? 'text-slate-900 dark:text-slate-900 font-bold border-transparent'
+                                      : activeItemSearchIndex === i
                                       ? 'bg-white dark:bg-slate-800 border-teal-600 ring-1 ring-teal-500 shadow-xs'
                                       : 'border-transparent hover:border-slate-300 dark:hover:border-slate-600'
                                   }`}
@@ -2342,64 +2505,138 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             </td>
 
                             {/* Beginning Inventory */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                begNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(begKey, `${itemDesc} - Beg Inv`);
+                              }}
+                              title={begNote ? `Note: "${begNote.text}" (${begNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(begKey, `${itemDesc} - Beg Inv`, begNote)}
                               {c.auto ? (
-                                <span className="font-medium text-slate-700 dark:text-slate-300">
+                                <span className={`font-medium ${begNote ? 'text-slate-900 dark:text-slate-900 font-bold' : 'text-slate-700 dark:text-slate-300'}`}>
                                   {raw(c.beg)}
                                 </span>
                               ) : (
                                 <CalculatorCellInput
                                   disabled={!canEdit}
                                   value={raw(r.beg)}
+                                  hasNote={!!begNote}
                                   onChange={val => handleNumberInput(i, 'beg', val)}
-                                  className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none"
+                                  className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                    begNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                  }`}
                                 />
                               )}
                             </td>
 
                             {/* Deliveries */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                delNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(delKey, `${itemDesc} - Deliveries`);
+                              }}
+                              title={delNote ? `Note: "${delNote.text}" (${delNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(delKey, `${itemDesc} - Deliveries`, delNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.del)}
+                                hasNote={!!delNote}
                                 onChange={val => handleNumberInput(i, 'del', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none text-teal-700 dark:text-teal-300 font-medium"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                  delNote ? 'text-slate-900 dark:text-slate-900 font-bold' : 'text-teal-700 dark:text-teal-300 font-medium'
+                                }`}
                               />
                             </td>
 
                             {/* Doc # */}
-                            <td className="p-0.5 border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 border-r border-slate-200 dark:border-slate-800 relative group ${
+                                docNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(docKey, `${itemDesc} - Doc #`);
+                              }}
+                              title={docNote ? `Note: "${docNote.text}" (${docNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(docKey, `${itemDesc} - Doc #`, docNote)}
                               <input
                                 type="text"
                                 disabled={!canEdit}
                                 value={r.doc || ''}
                                 onChange={e => handleCellChange(i, 'doc', e.target.value)}
-                                className="w-full min-w-0 px-0.5 py-0.5 text-[9.5px] 2xl:text-[10.5px] bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none truncate"
+                                className={`w-full min-w-0 px-0.5 py-0.5 text-[9.5px] 2xl:text-[10.5px] bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none truncate ${
+                                  docNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                }`}
                               />
                             </td>
 
                             {/* Stock Withdrawal */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                wdNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(wdKey, `${itemDesc} - Stock W/D`);
+                              }}
+                              title={wdNote ? `Note: "${wdNote.text}" (${wdNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(wdKey, `${itemDesc} - Stock W/D`, wdNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.wd)}
+                                hasNote={!!wdNote}
                                 onChange={val => handleNumberInput(i, 'wd', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                  wdNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                }`}
                               />
                             </td>
 
                             {/* Transfer From */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                tfNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(tfKey, `${itemDesc} - Transfer From`);
+                              }}
+                              title={tfNote ? `Note: "${tfNote.text}" (${tfNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(tfKey, `${itemDesc} - Transfer From`, tfNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.tf)}
+                                hasNote={!!tfNote}
                                 onChange={val => handleNumberInput(i, 'tf', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                  tfNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                }`}
                               />
                             </td>
 
                             {/* Transfer From Location */}
-                            <td className="p-0.5 border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 border-r border-slate-200 dark:border-slate-800 relative group ${
+                                tflNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(tflKey, `${itemDesc} - TF From Location`);
+                              }}
+                              title={tflNote ? `Note: "${tflNote.text}" (${tflNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(tflKey, `${itemDesc} - TF From Location`, tflNote)}
                               {(() => {
                                 const parsed = parseTransferLocations(r.tfl, r.tf_locs, r.tf);
                                 if (parsed.length > 1) {
@@ -2447,7 +2684,9 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                                           return { ...prev, rows: newRows };
                                         });
                                       }}
-                                      className="w-full min-w-0 px-0.5 py-0.5 text-[9px] 2xl:text-[10px] bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none truncate"
+                                      className={`w-full min-w-0 px-0.5 py-0.5 text-[9px] 2xl:text-[10px] bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none truncate ${
+                                        tflNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                      }`}
                                     >
                                       <option value=""></option>
                                       {state.locs.map(l => (
@@ -2472,27 +2711,63 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             </td>
 
                             {/* Internal Transfer From (Price Changes) */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                itfNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(itfKey, `${itemDesc} - Int TF`);
+                              }}
+                              title={itfNote ? `Note: "${itfNote.text}" (${itfNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(itfKey, `${itemDesc} - Int TF`, itfNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.itf)}
+                                hasNote={!!itfNote}
                                 onChange={val => handleNumberInput(i, 'itf', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                  itfNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                }`}
                               />
                             </td>
 
                             {/* Transfer To */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                ttNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(ttKey, `${itemDesc} - Transfer To`);
+                              }}
+                              title={ttNote ? `Note: "${ttNote.text}" (${ttNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(ttKey, `${itemDesc} - Transfer To`, ttNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.tt)}
+                                hasNote={!!ttNote}
                                 onChange={val => handleNumberInput(i, 'tt', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                  ttNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                }`}
                               />
                             </td>
 
                             {/* Transfer To Location */}
-                            <td className="p-0.5 border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 border-r border-slate-200 dark:border-slate-800 relative group ${
+                                ttlNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(ttlKey, `${itemDesc} - Transfer To Location`);
+                              }}
+                              title={ttlNote ? `Note: "${ttlNote.text}" (${ttlNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(ttlKey, `${itemDesc} - Transfer To Location`, ttlNote)}
                               {(() => {
                                 const parsed = parseTransferLocations(r.ttl, r.tt_locs, r.tt);
                                 if (parsed.length > 1) {
@@ -2540,7 +2815,9 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                                           return { ...prev, rows: newRows };
                                         });
                                       }}
-                                      className="w-full min-w-0 px-0.5 py-0.5 text-[9px] 2xl:text-[10px] bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none truncate"
+                                      className={`w-full min-w-0 px-0.5 py-0.5 text-[9px] 2xl:text-[10px] bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none truncate ${
+                                        ttlNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                      }`}
                                     >
                                       <option value=""></option>
                                       {state.locs.map(l => (
@@ -2565,65 +2842,140 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                             </td>
 
                             {/* Internal Transfer To (Price Changes) */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                ittNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(ittKey, `${itemDesc} - Int TT`);
+                              }}
+                              title={ittNote ? `Note: "${ittNote.text}" (${ittNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(ittKey, `${itemDesc} - Int TT`, ittNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.itt)}
+                                hasNote={!!ittNote}
                                 onChange={val => handleNumberInput(i, 'itt', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                  ittNote ? 'text-slate-900 dark:text-slate-900 font-bold' : ''
+                                }`}
                               />
                             </td>
 
                             {/* Bad Order */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                badNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(badKey, `${itemDesc} - Bad Order`);
+                              }}
+                              title={badNote ? `Note: "${badNote.text}" (${badNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(badKey, `${itemDesc} - Bad Order`, badNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.bad)}
+                                hasNote={!!badNote}
                                 onChange={val => handleNumberInput(i, 'bad', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none text-rose-600 dark:text-rose-400"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none ${
+                                  badNote ? 'text-slate-900 dark:text-slate-900 font-bold' : 'text-rose-600 dark:text-rose-400'
+                                }`}
                               />
                             </td>
 
                             {/* Total Goods Available (Calculated) */}
                             <td
-                              className={`p-0.5 text-center font-mono tabular-nums font-semibold text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 bg-teal-50/50 dark:bg-teal-950/30 truncate ${
-                                c.tg < 0 ? 'text-rose-600 dark:text-rose-400' : ''
-                              }`}
+                              className={`p-0.5 text-center font-mono tabular-nums font-semibold text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group truncate ${
+                                tgNote
+                                  ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold'
+                                  : 'bg-teal-50/50 dark:bg-teal-950/30'
+                              } ${c.tg < 0 && !tgNote ? 'text-rose-600 dark:text-rose-400' : ''}`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(tgKey, `${itemDesc} - Goods Available`);
+                              }}
+                              title={tgNote ? `Note: "${tgNote.text}" (${tgNote.author}) - Right-click to edit` : 'Right-click to add note'}
                             >
+                              {renderCellNoteIndicator(tgKey, `${itemDesc} - Goods Available`, tgNote)}
                               {raw(c.tg)}
                             </td>
 
                             {/* Ending Inventory */}
-                            <td className="p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800">
+                            <td
+                              className={`p-0.5 text-center font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group ${
+                                endNote ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold' : ''
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(endKey, `${itemDesc} - Ending Inv`);
+                              }}
+                              title={endNote ? `Note: "${endNote.text}" (${endNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(endKey, `${itemDesc} - Ending Inv`, endNote)}
                               <CalculatorCellInput
                                 disabled={!canEdit}
                                 value={raw(r.end)}
+                                hasNote={!!endNote}
                                 placeholder={isSoldOut ? 'Sold out' : ''}
                                 onChange={val => handleNumberInput(i, 'end', val)}
-                                className="w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none font-bold text-amber-700 dark:text-amber-400"
+                                className={`w-full min-w-0 text-center px-0.5 py-0.5 bg-transparent border border-transparent hover:border-slate-300 focus:bg-white dark:focus:bg-slate-800 focus:border-teal-600 rounded focus:outline-none font-bold ${
+                                  endNote ? 'text-slate-900 dark:text-slate-900' : 'text-amber-700 dark:text-amber-400'
+                                }`}
                               />
                             </td>
 
                             {/* Total Goods Sold (Calculated) */}
                             <td
-                              className={`p-0.5 text-center font-mono tabular-nums font-semibold text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 bg-teal-50/50 dark:bg-teal-950/30 truncate ${
-                                c.sold < 0 ? 'text-rose-600 dark:text-rose-400' : ''
-                              }`}
+                              className={`p-0.5 text-center font-mono tabular-nums font-semibold text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group truncate ${
+                                soldNote
+                                  ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold'
+                                  : 'bg-teal-50/50 dark:bg-teal-950/30'
+                              } ${c.sold < 0 && !soldNote ? 'text-rose-600 dark:text-rose-400' : ''}`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(soldKey, `${itemDesc} - Goods Sold`);
+                              }}
+                              title={soldNote ? `Note: "${soldNote.text}" (${soldNote.author}) - Right-click to edit` : 'Right-click to add note'}
                             >
+                              {renderCellNoteIndicator(soldKey, `${itemDesc} - Goods Sold`, soldNote)}
                               {raw(c.sold)}
                             </td>
 
                             {/* SRP */}
-                            <td className="p-0.5 text-right font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 truncate">
+                            <td
+                              className={`p-0.5 text-right font-mono tabular-nums text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group truncate ${
+                                srpNote
+                                  ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold'
+                                  : 'text-slate-600 dark:text-slate-400'
+                              }`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(srpKey, `${itemDesc} - SRP`);
+                              }}
+                              title={srpNote ? `Note: "${srpNote.text}" (${srpNote.author}) - Right-click to edit` : 'Right-click to add note'}
+                            >
+                              {renderCellNoteIndicator(srpKey, `${itemDesc} - SRP`, srpNote)}
                               {acct(c.srp)}
                             </td>
 
                             {/* Total Sales (Calculated) */}
                             <td
-                              className={`p-0.5 px-1 text-right font-mono tabular-nums font-bold text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 bg-teal-50/50 dark:bg-teal-950/30 truncate ${
-                                c.sales < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-teal-900 dark:text-teal-200'
-                              }`}
+                              className={`p-0.5 px-1 text-right font-mono tabular-nums font-bold text-[10px] 2xl:text-[11px] border-r border-slate-200 dark:border-slate-800 relative group truncate ${
+                                salesNote
+                                  ? 'bg-[#ECECEC] dark:bg-[#FFFFEB] text-slate-900 dark:text-slate-900 font-semibold'
+                                  : 'bg-teal-50/50 dark:bg-teal-950/30'
+                              } ${c.sales < 0 && !salesNote ? 'text-rose-600 dark:text-rose-400' : !salesNote ? 'text-teal-900 dark:text-teal-200' : ''}`}
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                handleOpenNoteModal(salesKey, `${itemDesc} - Total Sales`);
+                              }}
+                              title={salesNote ? `Note: "${salesNote.text}" (${salesNote.author}) - Right-click to edit` : 'Right-click to add note'}
                             >
+                              {renderCellNoteIndicator(salesKey, `${itemDesc} - Total Sales`, salesNote)}
                               {acct(c.sales)}
                             </td>
 
@@ -3027,23 +3379,23 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
             maxHeight: '340px',
             zIndex: 9999
           }}
-          className="flex flex-col rounded-xl bg-slate-900 border border-slate-700 shadow-2xl p-2.5 text-xs divide-y divide-slate-800 animate-in fade-in duration-100 text-slate-100 font-sans"
+          className="flex flex-col rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-teal-500/30 shadow-2xl p-2.5 text-xs divide-y divide-slate-200 dark:divide-slate-800 animate-in fade-in duration-100 text-slate-800 dark:text-slate-100 font-sans transition-colors duration-200"
         >
           {/* Header */}
-          <div className="pb-2 flex items-center justify-between text-[11px] text-slate-400">
+          <div className="pb-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
             <div className="flex items-center gap-1.5 font-medium">
-              <Sparkles className="w-3.5 h-3.5 text-teal-400" />
+              <Sparkles className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
               <span>
                 {encoderForm.itemSearch.trim() ? (
                   <>
-                    Previewing items matching <span className="font-bold text-teal-300 font-mono">"{encoderForm.itemSearch}"</span>
+                    Previewing items matching <span className="font-bold text-teal-700 dark:text-teal-300 font-mono">"{encoderForm.itemSearch}"</span>
                   </>
                 ) : (
                   'Type any letter to preview matching items...'
                 )}
               </span>
             </div>
-            <span className="font-mono text-[10px] bg-slate-800 text-teal-400 border border-slate-700 px-1.5 py-0.5 rounded font-bold">
+            <span className="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 text-teal-700 dark:text-teal-400 border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 rounded font-bold">
               {matchingEncoderItems.length} {matchingEncoderItems.length === 1 ? 'item' : 'items'}
             </span>
           </div>
@@ -3056,30 +3408,30 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
               <div className="py-2 shrink-0">
                 <div
                   onClick={() => handleSelectEncoderItem(matchingEncoderItems[0].no)}
-                  className="p-2.5 bg-gradient-to-r from-teal-950/80 to-slate-850 rounded-lg border border-teal-500/50 cursor-pointer hover:border-teal-400 transition-colors"
+                  className="p-2.5 bg-slate-50 dark:bg-slate-850 rounded-lg border border-slate-300 dark:border-teal-500/40 cursor-pointer hover:border-teal-500 dark:hover:border-teal-400 transition-colors duration-200"
                 >
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-teal-300 flex items-center gap-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-300 flex items-center gap-1">
                       <Eye className="w-3 h-3" />
                       <span>Top Match Preview</span>
                     </span>
-                    <span className="text-[10px] font-medium bg-teal-900/80 text-teal-200 border border-teal-700 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] font-medium bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-200 border border-teal-300 dark:border-teal-700 px-1.5 py-0.5 rounded">
                       Press Enter ↵
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="font-bold text-white text-xs truncate">
+                      <div className="font-bold text-slate-900 dark:text-white text-xs truncate">
                         {highlightMatch(matchingEncoderItems[0].desc, encoderForm.itemSearch)}
                       </div>
-                      <div className="text-[10px] text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="font-mono">#{matchingEncoderItems[0].no}</span>
                         <span>•</span>
                         <span>{matchingEncoderItems[0].cat}</span>
                         {topMatchPrevEnd !== null && (
                           <>
                             <span>•</span>
-                            <span className="text-sky-300 font-semibold font-mono bg-sky-950/70 px-1 py-0.2 rounded border border-sky-800">
+                            <span className="text-sky-800 dark:text-sky-300 font-semibold font-mono bg-sky-100 dark:bg-sky-950/70 px-1 py-0.2 rounded border border-sky-300 dark:border-sky-800">
                               Beg Inv: {topMatchPrevEnd > 0 ? topMatchPrevEnd : '0 (Sold Out)'}
                             </span>
                           </>
@@ -3087,14 +3439,14 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                         {currentRowsWithIndex.some(x => x.r.no === matchingEncoderItems[0].no) && (
                           <>
                             <span>•</span>
-                            <span className="text-amber-400 font-semibold">● In table below</span>
+                            <span className="text-amber-600 dark:text-amber-400 font-semibold">● In table below</span>
                           </>
                         )}
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="text-[10px] text-slate-400">SRP</div>
-                      <div className="text-xs font-mono font-bold text-teal-300">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">SRP</div>
+                      <div className="text-xs font-mono font-bold text-teal-700 dark:text-teal-300">
                         ₱{f2(matchingEncoderItems[0].srp)}
                       </div>
                     </div>
@@ -3105,9 +3457,9 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
           })()}
 
           {/* Scrollable list of items */}
-          <div className="pt-1 overflow-y-auto max-h-48 divide-y divide-slate-800/80">
+          <div className="pt-1 overflow-y-auto max-h-48 divide-y divide-slate-200 dark:divide-slate-800/80">
             {matchingEncoderItems.length === 0 ? (
-              <div className="p-4 text-center text-slate-400 italic">
+              <div className="p-4 text-center text-slate-500 dark:text-slate-400 italic">
                 No items match "{encoderForm.itemSearch}"
               </div>
             ) : (
@@ -3124,32 +3476,32 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                     onClick={() => handleSelectEncoderItem(it.no)}
                     className={`p-2 cursor-pointer transition-colors flex items-center justify-between text-xs rounded ${
                       isSelected
-                        ? 'bg-teal-900/60 text-white ring-1 ring-teal-500/50'
-                        : 'hover:bg-slate-800 text-slate-300'
+                        ? 'bg-teal-100 dark:bg-teal-900/60 text-slate-900 dark:text-white ring-1 ring-teal-500/50'
+                        : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                     }`}
                   >
                     <div className="min-w-0 pr-2">
-                      <div className="font-semibold truncate text-[11px] text-white">
+                      <div className="font-semibold truncate text-[11px] text-slate-900 dark:text-white">
                         {highlightMatch(it.desc, encoderForm.itemSearch)}
                       </div>
-                      <div className="text-[9px] text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <div className="text-[9px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
                         <span className="font-mono">#{it.no}</span>
                         <span>•</span>
                         <span>{it.cat}</span>
                         {itPrevEnd !== null && (
                           <>
                             <span>•</span>
-                            <span className="text-sky-300 font-semibold font-mono">
+                            <span className="text-sky-800 dark:text-sky-300 font-semibold font-mono bg-sky-100 dark:bg-sky-950/70 px-1 py-0.2 rounded border border-sky-300 dark:border-sky-850">
                               Beg: {itPrevEnd > 0 ? itPrevEnd : '0 (Sold Out)'}
                             </span>
                           </>
                         )}
                         {isAlreadyInTable && (
-                          <span className="text-amber-400 font-medium">● In table below</span>
+                          <span className="text-amber-600 dark:text-amber-400 font-medium">● In table below</span>
                         )}
                       </div>
                     </div>
-                    <div className="text-right shrink-0 font-mono text-[10px] text-teal-400 font-bold">
+                    <div className="text-right shrink-0 font-mono text-[10px] text-teal-700 dark:text-teal-400 font-bold">
                       ₱{f2(it.srp)}
                     </div>
                   </div>
@@ -3293,6 +3645,120 @@ export const DataEntryTab: React.FC<DataEntryTabProps> = ({
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cell Note Modal (Available to all users to add/view/edit/delete cell notes) */}
+      {noteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setNoteModal(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-xl border border-slate-300 dark:border-slate-700 shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-4 py-3 bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-300 dark:border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
+                  <StickyNote className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Cell Note
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-xs" title={noteModal.cellLabel}>
+                    {noteModal.cellLabel}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNoteModal(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-4 space-y-3">
+              {noteModal.author && noteModal.timestamp && (
+                <div className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                  <span>
+                    By <strong className="text-slate-900 dark:text-white">{noteModal.author}</strong>
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500">
+                    {new Date(noteModal.timestamp).toLocaleString()}
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Note Text
+                </label>
+                <textarea
+                  autoFocus
+                  rows={4}
+                  value={noteModal.currentText}
+                  onChange={e =>
+                    setNoteModal(prev => (prev ? { ...prev, currentText: e.target.value } : null))
+                  }
+                  onKeyDown={e => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveNote(noteModal.cellKey, noteModal.currentText, noteModal.cellLabel);
+                    }
+                  }}
+                  placeholder="Type your note here... (all users can view and edit notes; cell will highlight automatically)"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none resize-none"
+                />
+                <div className="mt-1 flex items-center justify-between text-[10.5px] text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block w-2.5 h-2.5 rounded-xs bg-[#ECECEC] dark:bg-[#FFFFEB] border border-amber-400"></span>
+                    <span>Highlights: #ECECEC (Light) / #FFFFEB (Dark)</span>
+                  </span>
+                  <span>Ctrl+Enter to save</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              {noteModal.author ? (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteNote(noteModal.cellKey, noteModal.cellLabel)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg cursor-pointer transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Note</span>
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNoteModal(null)}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-750 rounded-lg cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveNote(noteModal.cellKey, noteModal.currentText, noteModal.cellLabel)}
+                  className="inline-flex items-center gap-1 px-3.5 py-1.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-500 rounded-lg shadow-xs cursor-pointer transition-colors"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Note</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

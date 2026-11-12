@@ -99,6 +99,13 @@ export interface AppState {
   vd?: string;
   vf?: 'AM' | 'PM';
   nc?: Record<string, number>;
+  notes?: Record<string, CellNote>;
+}
+
+export interface CellNote {
+  text: string;
+  author: string;
+  timestamp: number;
 }
 
 export interface RowComputed {
