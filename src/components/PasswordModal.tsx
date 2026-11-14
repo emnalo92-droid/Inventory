@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { KeyRound, X } from 'lucide-react';
-import { sha256, rnd } from '../utils/helpers';
+import { changeOwnPassword } from '../firebase';
 import { User } from '../types';
+import { validateClientPassword } from '../utils/helpers';
 
 interface PasswordModalProps {
   isOpen: boolean;
@@ -30,16 +31,9 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
     setLoading(true);
 
     try {
-      // Check current password
-      const oldHash = await sha256(user.salt + oldPw);
-      if (oldHash !== user.hash) {
-        setMsg({ text: 'Current password is incorrect.', error: true });
-        setLoading(false);
-        return;
-      }
-
-      if (newPw.length < 6) {
-        setMsg({ text: 'New password needs at least 6 characters.', error: true });
+      const pwError = validateClientPassword(newPw);
+      if (pwError) {
+        setMsg({ text: pwError, error: true });
         setLoading(false);
         return;
       }
@@ -50,14 +44,7 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         return;
       }
 
-      const newSalt = rnd();
-      const newHash = await sha256(newSalt + newPw);
-
-      const updatedUser: User = {
-        ...user,
-        salt: newSalt,
-        hash: newHash
-      };
+      const updatedUser = await changeOwnPassword(oldPw, newPw);
 
       setMsg({ text: 'Password successfully updated!', error: false });
       setTimeout(() => {
@@ -68,8 +55,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
         setNewPw2('');
         setMsg(null);
       }, 900);
-    } catch {
-      setMsg({ text: 'An error occurred while updating password.', error: true });
+    } catch (err: any) {
+      setMsg({ text: err?.message || 'An error occurred while updating password.', error: true });
     } finally {
       setLoading(false);
     }
@@ -109,14 +96,15 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
 
           <div>
             <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-              New Password (min 6 characters)
+              New Password (min 8 chars, letters + number/symbol)
             </label>
             <input
               type="password"
               value={newPw}
               onChange={e => setNewPw(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
+              maxLength={128}
               autoComplete="new-password"
               className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-600"
               placeholder="Enter new password"
@@ -132,7 +120,8 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
               value={newPw2}
               onChange={e => setNewPw2(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
+              maxLength={128}
               autoComplete="new-password"
               className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-600"
               placeholder="Confirm new password"

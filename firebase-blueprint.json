@@ -75,6 +75,24 @@
         }
       },
       "required": ["t", "u", "act", "desc"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized Firebase admin record keyed by Firebase UID",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Admin email address",
+          "maxLength": 200
+        },
+        "role": {
+          "type": "string",
+          "description": "Admin role label",
+          "maxLength": 50
+        }
+      },
+      "required": ["email"]
     }
   },
   "firestore": {
@@ -85,6 +103,10 @@
     "/audit_logs/{logId}": {
       "schema": "AuditLog",
       "description": "Detailed shift and inventory mutation audit trail"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Authorized Firebase administrators"
     }
   }
 }

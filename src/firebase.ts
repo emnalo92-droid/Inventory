@@ -227,8 +227,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export async function testConnection(): Promise<boolean> {
-  // If Firestore daily write quota is reached, check server health
-  if (isFirestoreQuotaExhausted || checkIsFirestoreQuotaExhausted()) {
+  // If Firestore daily write quota is reached or user is not signed into Firebase, check Express server health
+  if (isFirestoreQuotaExhausted || checkIsFirestoreQuotaExhausted() || !auth.currentUser) {
     try {
       const res = await fetch('/api/health');
       return res.ok;
@@ -237,9 +237,7 @@ export async function testConnection(): Promise<boolean> {
     }
   }
 
-  const path = 'test/connection';
   try {
-    // Wait for auth to initialize if method is available
     if (typeof auth.authStateReady === 'function') {
       try {
         await auth.authStateReady();
@@ -247,7 +245,6 @@ export async function testConnection(): Promise<boolean> {
         // ignore
       }
     }
-    // If a cached user is present, verify their token before Firestore makes requests
     if (auth.currentUser) {
       try {
         await auth.currentUser.getIdToken();
@@ -256,6 +253,7 @@ export async function testConnection(): Promise<boolean> {
         if (msg.includes('token-service-api') || msg.includes('securetoken')) {
           console.warn('Token Service API disabled on GCP project. Purging invalid token cache.');
           await clearStaleAuthCache();
+          return false;
         }
       }
     }
@@ -263,33 +261,222 @@ export async function testConnection(): Promise<boolean> {
     return true;
   } catch (error) {
     const msg = String((error as any)?.message || error);
-    if (msg.includes('token-service-api') || msg.includes('securetoken') || msg.includes('Fetching auth token failed')) {
-      await clearStaleAuthCache();
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-        return true;
-      } catch {
-        return false;
-      }
-    }
     if (msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded') || msg.includes('Quota exceeded')) {
       markFirestoreQuotaExhausted();
-      return true; // Cloud SQL is online
-    }
-    // If client went offline due to an auth token failure, purge cache and retry
-    if (auth.currentUser) {
-      try {
-        await clearStaleAuthCache();
-        await getDocFromServer(doc(db, 'test', 'connection'));
-        return true;
-      } catch {
-        // Continue to standard logging
-      }
+      return true;
     }
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error('Please check your Firebase configuration.');
     }
     return false;
+  }
+}
+
+// Signed server session token storage (per browser tab/session)
+const SESSION_TOKEN_KEY = 'inv_session_token';
+let inMemorySessionToken: string | null = null;
+
+export function getSessionToken(): string | null {
+  if (inMemorySessionToken) return inMemorySessionToken;
+  try {
+    const stored = typeof window !== 'undefined' ? sessionStorage.getItem(SESSION_TOKEN_KEY) : null;
+    if (stored) {
+      inMemorySessionToken = stored;
+      return stored;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
+
+export function setSessionToken(token: string | null): void {
+  inMemorySessionToken = token;
+  try {
+    if (typeof window !== 'undefined') {
+      if (token) {
+        sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+      } else {
+        sessionStorage.removeItem(SESSION_TOKEN_KEY);
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export async function getApiAuthHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...(extra || {}) };
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    headers['Authorization'] = `Session ${sessionToken}`;
+    return headers;
+  }
+  if (auth.currentUser) {
+    try {
+      const fbToken = await auth.currentUser.getIdToken();
+      if (fbToken) {
+        headers['Authorization'] = `Bearer ${fbToken}`;
+      }
+    } catch {
+      // proceed with cookie fallback if available
+    }
+  }
+  return headers;
+}
+
+export async function loginWithStaffCredentials(username: string, password: string): Promise<{ user: AppState['users'][number]; token: string }> {
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.user) {
+    throw new Error(data?.error || 'Authentication failed.');
+  }
+  if (data.token) {
+    setSessionToken(data.token);
+  }
+  return { user: data.user, token: data.token || '' };
+}
+
+export async function loginWithFirebaseSession(fbUser: FirebaseUser): Promise<{ user: AppState['users'][number]; token: string }> {
+  const idToken = await fbUser.getIdToken();
+  const res = await fetch('/api/auth/firebase-login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ name: fbUser.displayName }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.user) {
+    throw new Error(data?.error || 'This Google account is not authorized for this system.');
+  }
+  if (data.token) {
+    setSessionToken(data.token);
+  }
+  return { user: data.user, token: data.token || '' };
+}
+
+export async function fetchCurrentSessionUser(): Promise<AppState['users'][number] | null> {
+  try {
+    const headers = await getApiAuthHeaders();
+    const res = await fetch('/api/auth/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers,
+    });
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        setSessionToken(null);
+      }
+      return null;
+    }
+    const data = await res.json().catch(() => ({}));
+    return data?.authenticated && data?.user ? data.user : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function logoutSession(): Promise<void> {
+  try {
+    const headers = await getApiAuthHeaders();
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+    });
+  } catch {
+    // ignore network errors during sign-out
+  }
+  setSessionToken(null);
+  await signOutFirebase();
+}
+
+export async function changeOwnPassword(oldPassword: string, newPassword: string): Promise<AppState['users'][number]> {
+  const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+  const res = await fetch('/api/auth/change-password', {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ oldPassword, newPassword }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.user) {
+    throw new Error(data?.error || 'Failed to update password.');
+  }
+  if (data.token) {
+    setSessionToken(data.token);
+  }
+  return data.user;
+}
+
+export async function adminSetUserPassword(userId: number, newPassword: string): Promise<AppState['users'][number]> {
+  const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+  const res = await fetch('/api/users/set-password', {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ userId, newPassword }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.user) {
+    throw new Error(data?.error || 'Failed to update user password.');
+  }
+  if (data.token) {
+    setSessionToken(data.token);
+  }
+  return data.user;
+}
+
+export async function adminCreateUser(payload: {
+  name: string;
+  user: string;
+  password: string;
+  all: boolean;
+  locs: string[];
+  acc: string[];
+  res: string[];
+  email?: string;
+}): Promise<AppState['users'][number]> {
+  const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+  const res = await fetch('/api/users/create', {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.user) {
+    throw new Error(data?.error || 'Failed to create user.');
+  }
+  return data.user;
+}
+
+export async function recordAuditLogRemote(entry: {
+  timestamp?: string;
+  tab?: string;
+  action: string;
+  description: string;
+  date?: string;
+  location?: string;
+}): Promise<void> {
+  try {
+    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+    await fetch('/api/logs', {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify(entry),
+    });
+  } catch {
+    // ignore background log failure
   }
 }
 
@@ -306,22 +493,6 @@ export async function signInWithGoogle(promptConsent = false): Promise<{ user: F
       cachedAccessToken = credential.accessToken;
     }
 
-    // Sync authenticated user with Cloud SQL backend
-    try {
-      const token = await result.user.getIdToken().catch(() => null);
-      if (token) {
-        await fetch('/api/auth/sync', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ name: result.user.displayName })
-        });
-      }
-    } catch (syncErr) {
-      console.warn('Backend user sync warning:', syncErr);
-    }
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (err: any) {
     const msg = String(err?.message || err);
@@ -348,19 +519,14 @@ const STATE_DOC_PATH = 'inventory_data/shared_ledger';
 // Save state to Cloud SQL PostgreSQL via Express API
 export async function saveStateToCloudSQL(state: AppState, userDisplayName?: string): Promise<boolean> {
   try {
-    let token: string | null = null;
-    if (auth.currentUser) {
-      try {
-        token = await auth.currentUser.getIdToken();
-      } catch {
-        // proceed without token
-      }
+    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+    if (!headers['Authorization'] && !getSessionToken()) {
+      return false;
     }
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const res = await fetch('/api/ledger/save', {
       method: 'POST',
+      credentials: 'include',
       headers,
       body: JSON.stringify({
         state,
@@ -377,18 +543,11 @@ export async function saveStateToCloudSQL(state: AppState, userDisplayName?: str
 // Fetch initial state from Cloud SQL PostgreSQL
 export async function fetchStateFromCloudSQL(): Promise<AppState | null> {
   try {
-    let token: string | null = null;
-    if (auth.currentUser) {
-      try {
-        token = await auth.currentUser.getIdToken();
-      } catch {
-        // proceed without token
-      }
-    }
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch('/api/ledger', { headers });
+    const headers = await getApiAuthHeaders();
+    const res = await fetch('/api/ledger', {
+      credentials: 'include',
+      headers
+    });
     if (!res.ok) return null;
     const data = await res.json();
     return data.found ? data.state : null;
@@ -426,8 +585,13 @@ export function sanitizeForFirestore<T = any>(val: T): T {
 let lastWrittenStateSignature = '';
 
 export async function saveStateToFirestore(state: AppState, userDisplayName?: string): Promise<void> {
-  // Always guarantee persistence via Cloud SQL PostgreSQL
+  // Always guarantee persistence via authenticated Cloud SQL PostgreSQL API
   await saveStateToCloudSQL(state, userDisplayName).catch(e => console.warn('Cloud SQL save err:', e));
+
+  // Direct Firestore writes require verified Firebase authentication (staff terminals sync through Cloud SQL)
+  if (!auth.currentUser || !auth.currentUser.emailVerified) {
+    return;
+  }
 
   // Rule 5: Skip writes when the value hasn't changed
   const stateSignature = JSON.stringify({
@@ -441,7 +605,7 @@ export async function saveStateToFirestore(state: AppState, userDisplayName?: st
     cinfo: state.cinfo,
     cpay: state.cpay,
     cashiers: state.cashiers,
-    users: state.users,
+    users: state.users.map(u => ({ ...u, salt: '', hash: u.hash ? '__set__' : '' })),
     logLen: state.log?.length || 0
   });
 
@@ -455,10 +619,14 @@ export async function saveStateToFirestore(state: AppState, userDisplayName?: st
   }
 
   try {
+    const safeUsers = Array.isArray(state.users)
+      ? state.users.map(u => ({ ...u, salt: '', hash: u.hash ? '__set__' : '' }))
+      : [];
     const rawPayload = {
       ...state,
+      users: safeUsers,
       updatedAt: new Date().toISOString(),
-      updatedBy: userDisplayName || (auth.currentUser?.email || auth.currentUser?.displayName || 'anonymous')
+      updatedBy: userDisplayName || auth.currentUser.email || auth.currentUser.displayName || 'Owner'
     };
     const sanitizedPayload = sanitizeForFirestore(rawPayload);
     await setDoc(doc(db, 'inventory_data', 'shared_ledger'), sanitizedPayload, { merge: true });
@@ -468,6 +636,10 @@ export async function saveStateToFirestore(state: AppState, userDisplayName?: st
     if (msg.includes('resource-exhausted') || msg.includes('Quota limit exceeded') || msg.includes('Quota exceeded')) {
       markFirestoreQuotaExhausted();
       console.warn('Firestore daily write quota reached on free tier. Seamlessly persisting all data via Cloud SQL PostgreSQL.');
+      return;
+    }
+    if (msg.includes('permission-denied')) {
+      console.warn('Firestore direct write skipped (non-admin Firebase account); Cloud SQL sync remains active.');
       return;
     }
     handleFirestoreError(error, OperationType.WRITE, STATE_DOC_PATH);
@@ -481,11 +653,12 @@ export function subscribeToFirestoreState(
   const stateDocRef = doc(db, 'inventory_data', 'shared_ledger');
   let pollInterval: any = null;
   let lastUpdatedAt = '';
+  let visibilityHandler: (() => void) | null = null;
 
   const startCloudSqlPolling = () => {
     if (pollInterval) return;
 
-    // Fetch initial state immediately from Cloud SQL
+    // Fetch initial state immediately from authenticated Cloud SQL endpoint
     fetchStateFromCloudSQL().then(sqlState => {
       if (sqlState && typeof sqlState === 'object') {
         const sqlUpdated = (sqlState as any).updatedAt || '';
@@ -514,24 +687,41 @@ export function subscribeToFirestoreState(
 
     pollInterval = setInterval(triggerPoll, 5000);
 
-    const onVisibilityChange = () => {
+    visibilityHandler = () => {
       if (typeof document !== 'undefined' && !document.hidden) {
         triggerPoll();
       }
     };
 
     if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', onVisibilityChange);
+      document.addEventListener('visibilitychange', visibilityHandler);
     }
   };
 
-  // If quota is exhausted, bypass Firestore onSnapshot completely and poll Cloud SQL
-  if (isFirestoreQuotaExhausted || checkIsFirestoreQuotaExhausted()) {
-    isFirestoreQuotaExhausted = true;
+  const cleanup = (unsubFs: (() => void) | null) => {
+    if (unsubFs) {
+      try { unsubFs(); } catch {}
+    }
+    if (pollInterval) {
+      clearInterval(pollInterval);
+    }
+    if (visibilityHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', visibilityHandler);
+    }
+  };
+
+  // Use Cloud SQL polling if quota exhausted OR if client is authenticated via local staff session (no Firebase user)
+  if (
+    isFirestoreQuotaExhausted ||
+    checkIsFirestoreQuotaExhausted() ||
+    !auth.currentUser ||
+    !auth.currentUser.emailVerified
+  ) {
+    if (isFirestoreQuotaExhausted || checkIsFirestoreQuotaExhausted()) {
+      isFirestoreQuotaExhausted = true;
+    }
     startCloudSqlPolling();
-    return () => {
-      if (pollInterval) clearInterval(pollInterval);
-    };
+    return () => cleanup(null);
   }
 
   let unsubFirestore: (() => void) | null = null;
@@ -550,7 +740,7 @@ export function subscribeToFirestoreState(
       (error) => {
         const msg = String(error?.message || (error as any)?.code || error);
         if (msg.includes('token-service-api') || msg.includes('securetoken') || msg.includes('Fetching auth token failed')) {
-          console.warn('Auth token refresh disabled on GCP project. Operating unauthenticated.');
+          console.warn('Auth token refresh disabled on GCP project. Switching to Cloud SQL sync.');
           clearStaleAuthCache().catch(() => {});
           startCloudSqlPolling();
           return;
@@ -569,26 +759,22 @@ export function subscribeToFirestoreState(
         startCloudSqlPolling();
       }
     );
-  } catch (err) {
+  } catch {
     startCloudSqlPolling();
   }
 
-  return () => {
-    if (unsubFirestore) {
-      try { unsubFirestore(); } catch {}
-    }
-    if (pollInterval) {
-      clearInterval(pollInterval);
-    }
-  };
+  return () => cleanup(unsubFirestore);
 }
 
-// Multi-user Live Presence tracking (routed through server API for zero Firestore write quota usage!)
+// Multi-user Live Presence tracking (authenticated through Express server API)
 export async function updatePresence(presence: PresenceUser): Promise<void> {
   try {
+    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
+    if (!headers['Authorization'] && !getSessionToken()) return;
     await fetch('/api/presence', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers,
       body: JSON.stringify(presence)
     });
   } catch (err) {
@@ -598,9 +784,11 @@ export async function updatePresence(presence: PresenceUser): Promise<void> {
 
 export async function clearPresence(userId: number | string): Promise<void> {
   try {
+    const headers = await getApiAuthHeaders({ 'Content-Type': 'application/json' });
     await fetch('/api/presence/clear', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers,
       body: JSON.stringify({ userId, id: userId })
     });
   } catch (err) {
@@ -615,7 +803,11 @@ export function subscribeToPresence(
   const fetchActive = async () => {
     if (!isActive) return;
     try {
-      const res = await fetch('/api/presence');
+      const headers = await getApiAuthHeaders();
+      const res = await fetch('/api/presence', {
+        credentials: 'include',
+        headers
+      });
       if (res.ok) {
         const data = await res.json();
         if (data && Array.isArray(data.active) && isActive) {
@@ -635,4 +827,5 @@ export function subscribeToPresence(
     clearInterval(interval);
   };
 }
+
 

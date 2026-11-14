@@ -1,4 +1,4 @@
-import { AppState, Item, Row, RowComputed, User, LogEntry, CellNote } from '../types';
+import type { AppState, Item, Row, RowComputed, User, LogEntry, CellNote } from '../types.ts';
 
 export const KEY = 'inv_ledger_v1';
 export const V = 6;
@@ -58,7 +58,7 @@ export function evaluateFormula(expr: any): number | null {
     return isNaN(n) ? null : n;
   }
 
-  if (!clean) return null;
+  if (!clean || clean.length > 200) return null;
   if (!/^[0-9+\-*\/().\s]+$/.test(clean)) return null;
 
   try {
@@ -114,7 +114,7 @@ export function evaluateFormula(expr: any): number | null {
         else if (item === '/') stack.push(b === 0 ? 0 : a / b);
       }
     }
-    if (stack.length !== 1 || isNaN(stack[0])) return null;
+    if (stack.length !== 1 || !Number.isFinite(stack[0])) return null;
     return Math.round(stack[0] * 10000) / 10000;
   } catch {
     return null;
@@ -146,32 +146,66 @@ export const dcmp = (a?: string, b?: string): number => {
 export const fo = (r: Row): number => (r.fr === 'PM' ? 1 : 0);
 
 export const rnd = (): string => {
-  try {
-    return [...crypto.getRandomValues(new Uint8Array(8))]
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    return [...globalThis.crypto.getRandomValues(new Uint8Array(12))]
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
-  } catch {
-    return Math.random().toString(36).slice(2);
   }
+  if (typeof globalThis !== 'undefined' && typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 24);
+  }
+  throw new Error('Cryptographically secure random number generator unavailable.');
 };
 
 export async function sha256(text: string): Promise<string> {
-  try {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(text);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    // Fallback if subtle crypto isn't available
-    let hash = 0;
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash |= 0;
-    }
-    return 'fallback_' + Math.abs(hash).toString(16);
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    throw new Error('Web Crypto API unavailable in this context; use server-side hashing.');
   }
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+const CLIENT_COMMON_WEAK_PASSWORDS = new Set([
+  '123456',
+  '1234567',
+  '12345678',
+  '123456789',
+  '1234567890',
+  'password',
+  'password1',
+  'password123',
+  'qwerty',
+  'qwerty123',
+  'admin123',
+  'letmein',
+  'welcome1',
+  'abc12345',
+  '11111111',
+  '00000000'
+]);
+
+export function validateClientPassword(password: string): string | null {
+  if (typeof password !== 'string' || !password.trim()) {
+    return 'Password is required.';
+  }
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters.';
+  }
+  if (password.length > 128) {
+    return 'Password must be 128 characters or fewer.';
+  }
+  if (CLIENT_COMMON_WEAK_PASSWORDS.has(password.toLowerCase())) {
+    return 'Password is too common. Please choose a stronger password.';
+  }
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumberOrSymbol = /[0-9!@#$%^&*(),.?":{}|<>_\-+=\\/\[\];'`~]/.test(password);
+  if (!hasLetter || !hasNumberOrSymbol) {
+    return 'Password must include both letters and at least one number or symbol.';
+  }
+  return null;
 }
 
 export const unitCost = (it: Item): number => {
@@ -331,8 +365,8 @@ export const SEED_USERS: User[] = [
     email: 'em.nalo92@gmail.com',
     isOwner: true,
     role: 'Owner',
-    salt: '4a5954c9de285fd9',
-    hash: '3bb5f126e581d804065e179f997c3389776ffe5833087d0766a24a8812e7c5bd'
+    salt: '',
+    hash: ''
   },
   {
     id: 2,
@@ -342,8 +376,8 @@ export const SEED_USERS: User[] = [
     acc: ['All'],
     res: ['Restrict Profit and Loss', 'Restrict User Access', 'Restrict Google Drive'],
     user: 'rperin',
-    salt: 'inv-rperin-c91d40e8',
-    hash: 'f6c732ca58c6bfff91f4f56609587599b85be02f11a8e481c1f078eb57eff6a0'
+    salt: '',
+    hash: ''
   },
   {
     id: 3,
@@ -353,8 +387,8 @@ export const SEED_USERS: User[] = [
     acc: ['View Only'],
     res: ['Restrict User Access', 'Restrict Google Drive'],
     user: 'jmartinez',
-    salt: 'inv-jmartinez-5be2a7d1',
-    hash: 'b0c47e49a5b96df506d905eacba8ace97ea4c7bbe69e1f812d38ebf333f062e9'
+    salt: '',
+    hash: ''
   },
   {
     id: 4,
@@ -364,8 +398,8 @@ export const SEED_USERS: User[] = [
     acc: ['All'],
     res: ['Restrict User Access', 'Restrict Google Drive'],
     user: 'mbruzula',
-    salt: 'e76c1cacf9d77466',
-    hash: 'a6d2f348ae7e96721d251fe587a3351c116d928f68f06a8a80a43f7f6c68e4ff'
+    salt: '',
+    hash: ''
   },
   {
     id: 5,
@@ -375,8 +409,8 @@ export const SEED_USERS: User[] = [
     acc: ['All'],
     res: ['Restrict Profit and Loss', 'Restrict User Access', 'Restrict Google Drive'],
     user: 'mguanzon',
-    salt: '24460e4abfc18609',
-    hash: '1b0159078fd328de40057d6a1312bc3c0c5db1663580a4b13f1912ffa75e255f'
+    salt: '',
+    hash: ''
   },
   {
     id: 6,
@@ -386,8 +420,8 @@ export const SEED_USERS: User[] = [
     acc: ['All'],
     res: ['Restrict Profit and Loss', 'Restrict User Access', 'Restrict Google Drive'],
     user: 'apeligones',
-    salt: 'c3593e45132c35b6',
-    hash: 'fd00bef3244211df41365550cebc632eb03fe25a11f9fd2123293e266fe226db'
+    salt: '',
+    hash: ''
   },
   {
     id: 7,
@@ -397,8 +431,8 @@ export const SEED_USERS: User[] = [
     acc: ['All'],
     res: ['Restrict Profit and Loss', 'Restrict User Access', 'Restrict Google Drive'],
     user: 'mjuaton',
-    salt: '7f5e1be8b9026fb7',
-    hash: '0e8c73e1391d61e68b98d78383d0c59a2dfc5ee8bf76c3780007fc007c345dc7'
+    salt: '',
+    hash: ''
   },
   {
     id: 8,
@@ -408,8 +442,8 @@ export const SEED_USERS: User[] = [
     acc: ['All'],
     res: ['Restrict Profit and Loss', 'Restrict User Access', 'Restrict Google Drive'],
     user: 'jbermudez',
-    salt: '47737daca0b7e653',
-    hash: '8b89dd29467e768037f1f97c218020df9d1b97e358d15589c485bd026759832e'
+    salt: '',
+    hash: ''
   },
   {
     id: 9,
@@ -419,8 +453,8 @@ export const SEED_USERS: User[] = [
     acc: ['View Only', 'Inventory Location', 'Cut Off Date', 'Start Date'],
     res: ['Restrict User Access', 'Restrict Google Drive', 'Restrict Profit and Loss'],
     user: 'adimaano',
-    salt: '68570489216d67b1',
-    hash: '773ce1109418fa74f4bf25ac6297d9d0fe8ee6f4d6fdb1cde333760df7f6b82f'
+    salt: '',
+    hash: ''
   },
   {
     id: 10,
@@ -430,8 +464,8 @@ export const SEED_USERS: User[] = [
     acc: ['All'],
     res: ['Restrict Profit and Loss', 'Restrict Google Drive', 'Restrict User Access'],
     user: 'rgunnacao',
-    salt: 'f0488528baee1868',
-    hash: 'b19d72f99c3603609915d768233eb40faaa0e28aabcf2d415c5412b4ef0c81c3'
+    salt: '',
+    hash: ''
   }
 ];
 
@@ -495,18 +529,34 @@ export function mergeStates(local: AppState, remote: AppState, clientLoc?: strin
   };
 }
 
+function stripUnsafeJsonKeys<T>(val: T): T {
+  if (val === null || typeof val !== 'object') return val;
+  if (Array.isArray(val)) return val.map(stripUnsafeJsonKeys) as unknown as T;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    out[k] = stripUnsafeJsonKeys(v);
+  }
+  return out as T;
+}
+
 export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const rawParsed = JSON.parse(raw);
+      const parsed = rawParsed && typeof rawParsed === 'object' ? stripUnsafeJsonKeys(rawParsed) : null;
       if (parsed && typeof parsed === 'object') {
         const seed = getSeedState();
         // Upgrade check
         if (!parsed.items) parsed.items = seed.items;
         if (!parsed.rows) parsed.rows = seed.rows;
         parsed.locs = ensureLocations(parsed.locs || seed.locs);
-        parsed.users = ensureTenUsers(parsed.users || seed.users);
+        parsed.users = ensureTenUsers(parsed.users || seed.users).map(u => ({
+          ...u,
+          salt: '',
+          hash: u.hash ? '__set__' : ''
+        }));
         if (!parsed.cashiers) parsed.cashiers = seed.cashiers;
         if (!parsed.cash) parsed.cash = {};
         if (parsed.cash['Commissary Takehome|2026-10-05'] === 35) {
@@ -529,7 +579,10 @@ export function loadState(): AppState {
 
 export function saveState(state: AppState): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    const safeUsers = Array.isArray(state.users)
+      ? state.users.map(u => ({ ...u, salt: '', hash: u.hash ? '__set__' : '' }))
+      : [];
+    localStorage.setItem(KEY, JSON.stringify({ ...state, users: safeUsers }));
   } catch (e) {
     console.warn('LocalStorage save failed', e);
   }

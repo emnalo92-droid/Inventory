@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppState, User, LogEntry, PresenceUser } from './types';
 import {
+  KEY,
   loadState,
   saveState,
   getSeedState,
@@ -10,8 +11,7 @@ import {
   fd,
   rnd,
   today,
-  mergeStates,
-  ensureTenUsers
+  mergeStates
 } from './utils/helpers';
 import { Header } from './components/Header';
 import { TabsNav } from './components/TabsNav';
@@ -43,6 +43,10 @@ import {
   subscribeToFirestoreState,
   saveStateToCloudSQL,
   fetchStateFromCloudSQL,
+  fetchCurrentSessionUser,
+  logoutSession,
+  loginWithFirebaseSession,
+  recordAuditLogRemote,
   signInWithGoogle,
   auth,
   updatePresence,
@@ -52,16 +56,10 @@ import {
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 export default function App() {
-  const [state, setState] = useState<AppState>(() => loadState());
+  const [state, setState] = useState<AppState>(() => getSeedState());
   const [currentTab, setCurrentTab] = useState<string>('entry');
-  const [currentUserId, setCurrentUserId] = useState<number | null>(() => {
-    try {
-      const stored = sessionStorage.getItem('inv_sess');
-      return stored ? Number(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [authenticatedUser, setAuthenticatedUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
 
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     try {
@@ -123,11 +121,49 @@ export default function App() {
     sessionStorage.setItem('inv_current_loc', loc);
   };
 
-  // Initialize Firebase connection, presence, and live sync
+  // Verify server session on boot (never trust unverified sessionStorage)
   useEffect(() => {
+    let active = true;
+    const unsubAuth = onAuthStateChanged(auth, u => {
+      if (active) setFirebaseUser(u);
+    });
+
+    fetchCurrentSessionUser()
+      .then(user => {
+        if (!active) return;
+        if (user) {
+          try {
+            const prevUid = localStorage.getItem('inv_cached_uid');
+            if (prevUid && prevUid !== String(user.id)) {
+              localStorage.removeItem(KEY);
+              sessionStorage.removeItem('inv_current_loc');
+            }
+            localStorage.setItem('inv_cached_uid', String(user.id));
+          } catch {}
+          setAuthenticatedUser(user);
+          setState(loadState());
+        } else {
+          try {
+            sessionStorage.removeItem('inv_current_loc');
+          } catch {}
+        }
+      })
+      .finally(() => {
+        if (active) setAuthChecked(true);
+      });
+
+    return () => {
+      active = false;
+      unsubAuth();
+    };
+  }, []);
+
+  // Initialize database sync & multi-user presence ONLY after authentication succeeds
+  useEffect(() => {
+    if (!authenticatedUser) return;
+
     testConnection();
 
-    // Check Cloud SQL first for persistent state
     fetchStateFromCloudSQL().then(sqlState => {
       if (sqlState && typeof sqlState === 'object') {
         isRemoteSyncRef.current = true;
@@ -139,15 +175,10 @@ export default function App() {
       }
     });
 
-    const unsubAuth = onAuthStateChanged(auth, u => {
-      setFirebaseUser(u);
-    });
-
     const unsubFirestore = subscribeToFirestoreState(
       remoteState => {
         if (remoteState && typeof remoteState === 'object') {
           isRemoteSyncRef.current = true;
-          // Synchronize remote database changes without overwriting this client's active branch view
           setState(prev => mergeStates(prev, remoteState, currentLocRef.current));
           setCloudStatus('connected');
           setTimeout(() => {
@@ -156,35 +187,38 @@ export default function App() {
         }
       },
       () => {
-        // Document empty on Firestore, seed from local state
-        const initial = loadState();
-        saveStateToCloudSQL(initial, 'Initial Setup')
-          .then(() => setCloudStatus('connected'))
-          .catch(() => setCloudStatus('offline'));
-        saveStateToFirestore(initial, 'Initial Setup').catch(() => {});
+        if (canUserEditData(authenticatedUser)) {
+          const initial = loadState();
+          saveStateToCloudSQL(initial, authenticatedUser.name || authenticatedUser.user)
+            .then(() => setCloudStatus('connected'))
+            .catch(() => setCloudStatus('offline'));
+          saveStateToFirestore(initial, authenticatedUser.name || authenticatedUser.user).catch(() => {});
+        }
       }
     );
 
-    // Subscribe to live multi-user presence
     const unsubPresence = subscribeToPresence(active => {
       setOnlineUsers(active);
     });
 
     return () => {
-      unsubAuth();
       unsubFirestore();
       unsubPresence();
     };
-  }, []);
+  }, [authenticatedUser?.id]);
 
-  // Save state to local cache on change
+  // Save state to local cache only while authenticated
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    if (authenticatedUser) {
+      saveState(state);
+    }
+  }, [state, authenticatedUser]);
 
-  // Current user resolution (rely on user id, not requiring u.user string so editing username does not log out)
-  const currentUser: User | null =
-    state.users.find(u => u.id === currentUserId) || null;
+  // Current user resolution
+  const currentUser: User | null = authenticatedUser
+    ? (state.users.find(u => u.id === authenticatedUser.id) || authenticatedUser)
+    : null;
+  const currentUserId: number | null = currentUser?.id ?? null;
 
   // Sync user location permission with active branch view
   useEffect(() => {
@@ -260,13 +294,11 @@ export default function App() {
     );
   };
 
-  const hasAnyAdmin = state.users.some(isUserAdmin);
   const canAdmin =
-    !currentUser ||
-    isUserAdmin(currentUser) ||
-    !hasAnyAdmin ||
-    (((currentUser.acc || []).includes('All') || (currentUser.acc || []).includes('User Access')) &&
-      !(currentUser.res || []).includes('Restrict User Access'));
+    Boolean(currentUser) &&
+    (isUserAdmin(currentUser) ||
+      (((currentUser!.acc || []).includes('All') || (currentUser!.acc || []).includes('User Access')) &&
+        !(currentUser!.res || []).includes('Restrict User Access')));
 
   const canAccessTab = (tabId: string): boolean => {
     return canUserAccessTab(currentUser, tabId);
@@ -292,8 +324,9 @@ export default function App() {
     ? state.locs
     : state.locs.filter(l => (currentUser?.locs || []).includes(l));
 
-  // Auto-carryover effect when viewing data entry or switching branch
+  // Auto-carryover effect when viewing data entry or switching branch (authenticated editors only)
   useEffect(() => {
+    if (!currentUser || !canUserEditData(currentUser)) return;
     if (currentTab === 'entry') {
       const targetDate = state.vd || state.start || today();
       const targetShift: 'AM' | 'PM' = state.vf === 'PM' ? 'PM' : 'AM';
@@ -335,13 +368,14 @@ export default function App() {
         return prev;
       });
     }
-  }, [currentTab, state.vd, state.vf, currentLoc]);
+  }, [currentTab, state.vd, state.vf, currentLoc, currentUser?.id]);
 
   // Central state updater with debounced synchronization for concurrency
   const handleUpdateState = (
     updater: (prev: AppState) => AppState,
     actionDescription?: string
   ) => {
+    if (!currentUser) return;
     setState(prev => {
       const next = updater(prev);
       if (actionDescription) {
@@ -395,8 +429,18 @@ export default function App() {
   };
 
   const handleLoginSuccess = (userObj: User) => {
-    setCurrentUserId(userObj.id);
-    sessionStorage.setItem('inv_sess', String(userObj.id));
+    try {
+      const prevUid = localStorage.getItem('inv_cached_uid');
+      if (prevUid && prevUid !== String(userObj.id)) {
+        localStorage.removeItem(KEY);
+        sessionStorage.removeItem('inv_current_loc');
+      }
+      localStorage.setItem('inv_cached_uid', String(userObj.id));
+    } catch {}
+
+    setAuthenticatedUser(userObj);
+    setAuthChecked(true);
+    setState(loadState());
 
     // If active location is not in user's permitted locations, switch to first available
     const locs = userObj.locs || [];
@@ -415,34 +459,47 @@ export default function App() {
       }
     }
 
-    handleUpdateState(
-      prev => prev,
-      `User signed in: ${userObj.name || userObj.user}`
-    );
+    recordAuditLogRemote({
+      tab: 'auth',
+      action: 'Sign In',
+      description: `User signed in: ${userObj.name || userObj.user}`,
+      location: currentLoc
+    });
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    const prevName = currentUser?.name || currentUser?.user || 'User';
     if (currentUser) {
-      clearPresence(currentUser.id);
+      await recordAuditLogRemote({
+        tab: 'auth',
+        action: 'Sign Out',
+        description: `Signed out (${prevName})`,
+        location: currentLoc
+      });
+      await clearPresence(currentUser.id);
     }
-    const prevName = currentUser?.name || 'User';
-    setCurrentUserId(null);
-    sessionStorage.removeItem('inv_sess');
-    handleUpdateState(prev => prev, `Signed out (${prevName})`);
+    await logoutSession();
+    setAuthenticatedUser(null);
+    setOnlineUsers([]);
+    try {
+      sessionStorage.removeItem('inv_current_loc');
+      localStorage.removeItem('inv_cached_uid');
+      localStorage.removeItem(KEY);
+    } catch {}
+    setState(getSeedState());
   };
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-300 text-xs font-medium">
+        Verifying secure session...
+      </div>
+    );
+  }
 
   // If user is not authenticated, render Login view
   if (!currentUser) {
-    return (
-      <LoginModal
-        users={state.users}
-        onLoginSuccess={handleLoginSuccess}
-        onRestoreSampleData={() => {
-          const seed = getSeedState();
-          setState(seed);
-        }}
-      />
-    );
+    return <LoginModal onLoginSuccess={handleLoginSuccess} />;
   }
 
   // Location Access Guard
@@ -483,14 +540,17 @@ export default function App() {
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         cloudStatus={cloudStatus}
         onlineUsers={onlineUsers}
+        canAdmin={canAdmin}
         firebaseEmail={firebaseUser?.email}
         onGoogleSignIn={async () => {
           try {
             setApiNotice(null);
-            await signInWithGoogle();
+            const { user: fbUser } = await signInWithGoogle();
+            await loginWithFirebaseSession(fbUser).catch(err => {
+              setApiNotice(err?.message || 'Google account synced for Drive, but not linked to an admin ledger profile.');
+            });
           } catch (e: any) {
             if (e?.code === 'auth/popup-closed-by-user' || e?.message?.includes('popup-closed-by-user')) {
-              // Closed without logging in
               return;
             }
             setApiNotice(e?.message || 'Google sign in could not be completed.');
@@ -743,13 +803,16 @@ export default function App() {
         user={currentUser}
         onClose={() => setIsPasswordModalOpen(false)}
         onSuccess={updatedUser => {
-          handleUpdateState(
-            prev => ({
-              ...prev,
-              users: prev.users.map(u => (u.id === updatedUser.id ? updatedUser : u))
-            }),
-            `Password changed by ${currentUser.name}`
-          );
+          setState(prev => ({
+            ...prev,
+            users: prev.users.map(u => (u.id === updatedUser.id ? updatedUser : u))
+          }));
+          recordAuditLogRemote({
+            tab: 'auth',
+            action: 'Password Changed',
+            description: `Password changed by ${currentUser.name}`,
+            location: currentLoc
+          });
         }}
       />
 

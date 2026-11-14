@@ -32,6 +32,7 @@ interface HeaderProps {
   firebaseEmail?: string | null;
   onGoogleSignIn?: () => void;
   onlineUsers?: PresenceUser[];
+  canAdmin?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -49,7 +50,8 @@ export const Header: React.FC<HeaderProps> = ({
   cloudStatus = 'connected',
   firebaseEmail,
   onGoogleSignIn,
-  onlineUsers = []
+  onlineUsers = [],
+  canAdmin = false
 }) => {
   const [showUsersPopover, setShowUsersPopover] = React.useState(false);
   const [showServerModal, setShowServerModal] = React.useState(false);
@@ -95,17 +97,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Right actions */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Windows Host Server & Network Manager Button */}
-            <button
-              type="button"
-              onClick={() => setShowServerModal(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-50 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors cursor-pointer shadow-2xs"
-              title="Windows Host Server & Local Store Wi-Fi Network Info"
-            >
-              <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-              <Server className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Host Server</span>
-            </button>
+            {/* Windows Host Server & Network Manager Button (Admin only) */}
+            {canAdmin && (
+              <button
+                type="button"
+                onClick={() => setShowServerModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-teal-50 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors cursor-pointer shadow-2xs"
+                title="Windows Host Server & Local Store Wi-Fi Network Info"
+              >
+                <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                <Server className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Host Server</span>
+              </button>
+            )}
 
             {/* Live Multi-user Presence Indicator */}
             <div className="relative" ref={popoverRef}>
@@ -301,7 +305,9 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
       </div>
-      <ServerInfoModal isOpen={showServerModal} onClose={() => setShowServerModal(false)} />
+      {canAdmin && (
+        <ServerInfoModal isOpen={showServerModal} onClose={() => setShowServerModal(false)} />
+      )}
     </header>
   );
 };

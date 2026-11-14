@@ -1,20 +1,18 @@
 import React, { useState } from 'react';
-import { Store, Lock, User as UserIcon, RotateCcw } from 'lucide-react';
+import { Store, Lock, User as UserIcon } from 'lucide-react';
 import { User } from '../types';
-import { sha256 } from '../utils/helpers';
-import { signInWithGoogle } from '../firebase';
+import {
+  signInWithGoogle,
+  signOutFirebase,
+  loginWithStaffCredentials,
+  loginWithFirebaseSession
+} from '../firebase';
 
 interface LoginModalProps {
-  users: User[];
   onLoginSuccess: (user: User) => void;
-  onRestoreSampleData: () => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({
-  users,
-  onLoginSuccess,
-  onRestoreSampleData
-}) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,40 +24,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setLoading(true);
 
     try {
-      const cleanInput = username.trim().toLowerCase();
-      // Pick up employee name as configured in the User Access tab, username handle, or owner email
-      const matched = users.find(
-        u =>
-          (u.name && u.name.trim().toLowerCase() === cleanInput) ||
-          (u.user && u.user.trim().toLowerCase() === cleanInput) ||
-          (u.email && u.email.trim().toLowerCase() === cleanInput) ||
-          (cleanInput === 'em.nalo92@gmail.com' && (u.id === 1 || u.user === 'enalo' || u.isOwner))
-      );
-
-      if (!matched) {
-        await new Promise(r => setTimeout(r, 400));
-        setError('Employee Name, Username, or Email not found. Please check spelling in User Access.');
+      const cleanInput = username.trim();
+      if (!cleanInput || !password) {
+        setError('Employee Name / Username and Password are required.');
         setLoading(false);
         return;
       }
 
-      // Check password hash
-      const computedHash = await sha256(matched.salt + password);
-      const isKnownPassword =
-        password === 'admin123' ||
-        password === 'password' ||
-        password === matched.user ||
-        (matched.name && password.toLowerCase() === matched.name.toLowerCase().replace(/\s+/g, '')) ||
-        ((matched.isOwner || matched.id === 1 || matched.user === 'enalo') && (password === 'admin' || password === 'admin123' || password === 'enalo'));
-
-      if (computedHash === matched.hash || isKnownPassword) {
-        onLoginSuccess(matched);
-      } else {
-        await new Promise(r => setTimeout(r, 400));
-        setError('Incorrect password. Please verify your password credentials.');
-      }
-    } catch {
-      setError('An error occurred during sign-in.');
+      const { user } = await loginWithStaffCredentials(cleanInput, password);
+      onLoginSuccess(user);
+    } catch (err: any) {
+      setError(err?.message || 'Invalid username or password.');
     } finally {
       setLoading(false);
     }
@@ -70,34 +45,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setLoading(true);
     try {
       const { user: fbUser } = await signInWithGoogle();
-      // Find Project Owner user or match email
-      const ownerUser = users.find(
-        u => u.isOwner || (u.email && u.email.toLowerCase() === fbUser.email?.toLowerCase()) || (fbUser.email === 'em.nalo92@gmail.com' && (u.id === 1 || u.user === 'enalo'))
-      );
-      if (ownerUser) {
-        onLoginSuccess({
-          ...ownerUser,
-          isOwner: true,
-          role: 'Owner',
-          email: fbUser.email || ownerUser.email || 'em.nalo92@gmail.com'
-        });
-        return;
+      try {
+        const { user } = await loginWithFirebaseSession(fbUser);
+        onLoginSuccess(user);
+      } catch (serverErr: any) {
+        await signOutFirebase().catch(() => {});
+        setError(serverErr?.message || 'This Google account is not authorized to access this ledger.');
       }
-      const adminUser = users.find(u => u.all) || {
-        id: 999,
-        name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Administrator',
-        all: true,
-        locs: [],
-        acc: ['All'],
-        res: [],
-        user: fbUser.email || 'admin',
-        email: fbUser.email || undefined,
-        isOwner: fbUser.email === 'em.nalo92@gmail.com',
-        role: fbUser.email === 'em.nalo92@gmail.com' ? 'Owner' : 'Administrator',
-        salt: '',
-        hash: ''
-      };
-      onLoginSuccess(adminUser);
     } catch (err: any) {
       if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') {
         setError(err?.message || 'Google Sign-In failed.');
@@ -168,7 +122,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               />
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              Input your Employee Name exactly as configured in the User Access tab.
+              Input your Employee Name or username handle as configured in User Access.
             </p>
           </div>
 
@@ -218,18 +172,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>
         </form>
-
-        {/* Reset Option */}
-        <div className="text-center pt-2 border-t border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={onRestoreSampleData}
-            className="text-[11px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 inline-flex items-center gap-1 cursor-pointer"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span>Restore default sample data</span>
-          </button>
-        </div>
       </div>
     </div>
   );

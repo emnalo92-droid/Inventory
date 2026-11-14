@@ -17,6 +17,28 @@ import {
   unitCost
 } from './helpers';
 
+export function sanitizeExcelCell(val: unknown): unknown {
+  if (typeof val !== 'string' || val.length === 0) return val;
+  if (/^[\t\r\n ]*[=+\-@]/.test(val) || val.charAt(0) === '\t' || val.charAt(0) === '\r') {
+    return `'${val}`;
+  }
+  return val;
+}
+
+export function sanitizeAoaForExcel(aoa: any[][]): any[][] {
+  return aoa.map(row => (Array.isArray(row) ? row.map(sanitizeExcelCell) : row));
+}
+
+export function sanitizeJsonRowsForExcel<T extends Record<string, any>>(rows: T[]): T[] {
+  return rows.map(row => {
+    const clean: Record<string, any> = {};
+    for (const [k, v] of Object.entries(row)) {
+      clean[k] = sanitizeExcelCell(v);
+    }
+    return clean as T;
+  });
+}
+
 export function downloadWorkbook(wb: XLSX.WorkBook, filename: string) {
   XLSX.writeFile(wb, filename);
 }
@@ -133,7 +155,7 @@ export function exportItemMaster(items: Item[], rows?: Row[], selectedYear?: str
     })
   ];
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(aoa));
   ws['!cols'] = hasRows
     ? [6, 12, 34, 26, 14, 14, 16, 14, 10, 14, 12, 13, 18, 11, 11].map(w => ({ wch: w }))
     : [6, 12, 34, 26, 12, 10, 14, 12, 13, 18, 11, 11].map(w => ({ wch: w }));
@@ -199,10 +221,25 @@ export function parseItemImport(
   let add = 0;
   const newItems = [...currentItems];
 
-  for (const r of rows.slice(st)) {
+  const ALLOWED_ITEM_KEYS = new Set<string>(['no', 'code', 'sys', 'desc', 'cat', 'srp', 'loc', 'vat', 'deliv', 'conv', 'wd', 'cv']);
+  const ITEM_STR_CAPS: Record<string, number> = {
+    code: 64,
+    sys: 200,
+    desc: 200,
+    cat: 100,
+    loc: 100
+  };
+
+  for (const r of rows.slice(st, st + 20000)) {
     const o: any = {};
     cols.forEach((k, j) => {
-      if (k && r[j] !== undefined) o[k] = String(r[j]).trim();
+      if (k && ALLOWED_ITEM_KEYS.has(k) && r[j] !== undefined) {
+        let val = String(r[j]).trim();
+        if (k in ITEM_STR_CAPS) {
+          val = val.slice(0, ITEM_STR_CAPS[k]);
+        }
+        o[k] = val;
+      }
     });
 
     if (!(o.code || o.desc || o.sys)) continue;
@@ -218,7 +255,7 @@ export function parseItemImport(
       o.vat = /^n/i.test(o.vat) ? 'NVAT' : 'VAT';
     }
 
-    const ln = parseInt(o.no);
+    const ln = parseInt(o.no, 10);
     delete o.no;
     const ex = isNaN(ln) ? null : newItems.find(x => x.no === ln);
 
@@ -454,7 +491,7 @@ export function exportDataEntry(state: AppState): void {
     G.sales
   ]);
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(aoa));
   ws['!cols'] = [10, 10, 26, 11, 10, 14, 10, 10, 20, 12, 10, 20, 12, 9, 11, 11, 11, 9, 12, 10].map(
     w => ({ wch: w })
   );
@@ -575,14 +612,16 @@ export function parseDataEntryImport(
 
   const baseYear = parseInt(state.start.slice(0, 4)) || 2026;
 
-  rows.slice(1).forEach(r => {
+  rows.slice(1, 25001).forEach(r => {
     const o: any = {};
     cols.forEach((k, j) => {
-      if (k && r[j] !== undefined && r[j] !== '') o[k] = r[j];
+      if (k && k !== '__proto__' && k !== 'constructor' && k !== 'prototype' && r[j] !== undefined && r[j] !== '') {
+        o[k] = r[j];
+      }
     });
 
-    const desc = String(o.desc ?? '').trim();
-    const fq = String(o.frame ?? '').trim();
+    const desc = String(o.desc ?? '').trim().slice(0, 200);
+    const fq = String(o.frame ?? '').trim().slice(0, 16);
     const fr: 'AM' | 'PM' = /^pm/i.test(fq) ? 'PM' : /^am/i.test(fq) ? 'AM' : curF;
 
     if (/^cash on hand/i.test(desc) && curD) {
@@ -598,7 +637,7 @@ export function parseDataEntryImport(
       const key = `${state.inv}|${curD}${fr === 'PM' ? '|PM' : ''}`;
       cinfoUpdates[key] = cinfoUpdates[key] || { cashier: '', shift: '' };
       const isS = /^shift/i.test(desc);
-      const v = String(o.sales ?? '').trim();
+      const v = String(o.sales ?? '').trim().slice(0, 120);
       if (isS) {
         cinfoUpdates[key].shift = /^[ab]$/i.test(v) ? v.toUpperCase() : '';
       } else {
@@ -650,9 +689,9 @@ export function parseDataEntryImport(
       }
     });
 
-    if (o.doc !== undefined) nr.doc = String(o.doc).trim();
-    if (o.tfl) nr.tfl = String(o.tfl).trim();
-    if (o.ttl) nr.ttl = String(o.ttl).trim();
+    if (o.doc !== undefined) nr.doc = String(o.doc).trim().slice(0, 80);
+    if (o.tfl) nr.tfl = String(o.tfl).trim().slice(0, 150);
+    if (o.ttl) nr.ttl = String(o.ttl).trim().slice(0, 150);
 
     const exIndex = newRows.findIndex(
       x => x.loc === state.inv && x.date === date && x.fr === fr && x.no === it.no
@@ -902,7 +941,7 @@ export function exportSummaryRange(
     ['Over/Short', ks.length ? totalCash - grandSales : '']
   );
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(aoa));
   ws['!cols'] = [30, 11, 10, 11, 11, 14, 10, 14, 9, 12, 11, 11, 10, 12].map(w => ({ wch: w }));
 
   const wb = XLSX.utils.book_new();
@@ -1108,7 +1147,7 @@ export function exportCashDetailsSummary(state: AppState): void {
     aoa.push(r);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(aoa));
   ws['!cols'] = [28, ...Array(Math.max(cols.length + 1, 7)).fill({ wch: 15 })];
 
   const wb = XLSX.utils.book_new();
@@ -1289,7 +1328,7 @@ export function exportProfitAndLoss(state: AppState): void {
     ['Short / Over', ...pData.map(d => d.shortOver)]
   ];
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(aoa));
   ws['!cols'] = [{ wch: 38 }, ...Array(pData.length).fill({ wch: 18 })];
 
   const wb = XLSX.utils.book_new();
@@ -1427,8 +1466,8 @@ export function exportTransferFromData(
   costAoa.push(['GRAND TOTAL NET OF VAT COST', ...locations.map(l => (grandColTotalsCost[l] === 0 ? '' : Number(grandColTotalsCost[l].toFixed(2))))]);
 
   const wb = XLSX.utils.book_new();
-  const ws1 = XLSX.utils.aoa_to_sheet(qtyAoa);
-  const ws2 = XLSX.utils.aoa_to_sheet(costAoa);
+  const ws1 = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(qtyAoa));
+  const ws2 = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(costAoa));
 
   ws1['!cols'] = [{ wch: 32 }, ...locations.map(() => ({ wch: 20 }))];
   ws2['!cols'] = [{ wch: 32 }, ...locations.map(() => ({ wch: 20 }))];
@@ -1598,8 +1637,8 @@ export function exportTransferToData(
   ]);
 
   const wb = XLSX.utils.book_new();
-  const ws1 = XLSX.utils.aoa_to_sheet(qtyAoa);
-  const ws2 = XLSX.utils.aoa_to_sheet(costAoa);
+  const ws1 = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(qtyAoa));
+  const ws2 = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(costAoa));
 
   ws1['!cols'] = [{ wch: 32 }, ...locations.map(() => ({ wch: 20 })), { wch: 20 }];
   ws2['!cols'] = [{ wch: 32 }, ...locations.map(() => ({ wch: 20 })), { wch: 20 }];
@@ -1692,7 +1731,7 @@ export function exportItemsSoldOutSummary(
     grandMonthlyAverage === 0 ? '' : Number(grandMonthlyAverage.toFixed(2))
   ]);
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(aoa));
   ws['!cols'] = [
     { wch: 10 },
     { wch: 14 },

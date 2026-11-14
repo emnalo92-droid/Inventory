@@ -20,6 +20,7 @@ import {
   FileText,
   Printer
 } from 'lucide-react';
+import { getApiAuthHeaders } from '../firebase';
 
 interface ServerInfoData {
   status: string;
@@ -51,7 +52,11 @@ export const ServerInfoModal: React.FC<ServerInfoModalProps> = ({ isOpen, onClos
   const fetchServerInfo = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/server-info');
+      const headers = await getApiAuthHeaders();
+      const res = await fetch('/api/server-info', {
+        credentials: 'include',
+        headers
+      });
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -346,7 +351,7 @@ start http://localhost:3000`;
                   <a
                     href="http://localhost:3000"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="p-1.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                     title="Open in new tab"
                   >
@@ -582,7 +587,7 @@ start http://localhost:3000`;
                   <a
                     href="/WINDOWS-SERVER-INSTALLATION-WALKTHROUGH.html"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 font-medium text-xs text-slate-700 dark:text-slate-200 transition-colors"
                   >
                     <Printer className="w-3.5 h-3.5 text-slate-500" />

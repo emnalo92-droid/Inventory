@@ -26,16 +26,20 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function isSignedIn() {
       return request.auth != null;
     }
 
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function isAdmin() {
-      return isSignedIn() && (
-        (request.auth.token.email == 'em.nalo92@gmail.com' && request.auth.token.email_verified == true) ||
+      return isVerifiedUser() && (
+        request.auth.token.email == 'em.nalo92@gmail.com' ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -49,47 +53,75 @@ service cloud.firestore {
     }
 
     function isValidInventoryData(data) {
-      return (!('inv' in data) || (data.inv is string && data.inv.size() <= 150)) &&
-             (!('start' in data) || (data.start is string && data.start.size() <= 32)) &&
-             (!('cut' in data) || (data.cut is string && data.cut.size() <= 32)) &&
+      return data.keys().hasAll(['inv', 'start', 'cut']) &&
+             data.keys().hasOnly([
+               'v', 'locs', 'inv', 'start', 'cut', 'items', 'rows',
+               'cash', 'cinfo', 'cashiers', 'cpay', 'users', 'log',
+               'vd', 'vf', 'nc', 'notes', 'updatedAt', 'updatedBy'
+             ]) &&
+             data.inv is string && data.inv.size() >= 1 && data.inv.size() <= 150 &&
+             data.start is string && data.start.size() >= 1 && data.start.size() <= 32 &&
+             data.cut is string && data.cut.size() >= 1 && data.cut.size() <= 32 &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64)) &&
              (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 200));
     }
 
     function isValidAuditLog(data) {
-      return data.t is string && data.t.size() <= 64 &&
-             data.u is string && data.u.size() <= 100 &&
-             data.act is string && data.act.size() <= 50 &&
-             data.desc is string && data.desc.size() <= 500;
+      return data.keys().hasAll(['t', 'u', 'act', 'desc']) &&
+             data.keys().hasOnly(['id', 't', 'u', 'tab', 'act', 'desc', 'date', 'loc']) &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+             data.t is string && data.t.size() >= 1 && data.t.size() <= 64 &&
+             data.u is string && data.u.size() >= 1 && data.u.size() <= 100 &&
+             (!('tab' in data) || (data.tab is string && data.tab.size() <= 50)) &&
+             data.act is string && data.act.size() >= 1 && data.act.size() <= 50 &&
+             data.desc is string && data.desc.size() <= 500 &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 32)) &&
+             (!('loc' in data) || (data.loc is string && data.loc.size() <= 150));
     }
 
-    // Connection testing doc
+    // Admin registry (managed server-side / Firebase Console only)
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isAdmin() || (isVerifiedUser() && request.auth.uid == adminId));
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // Connection testing doc (verified signed-in users only)
     match /test/{testId} {
-      allow read: if true;
+      allow get: if isValidId(testId) && testId == 'connection' && isVerifiedUser();
+      allow list: if false;
       allow write: if isAdmin();
     }
 
-    // Main inventory state
+    // Main inventory state (Admin Firebase users only; staff terminals sync via authenticated Express/Cloud SQL API)
     match /inventory_data/{docId} {
-      allow get: if isValidId(docId);
+      allow get: if isValidId(docId) && isAdmin();
       allow list: if false;
-      allow create, update: if isValidId(docId) && isValidInventoryData(incoming());
+      allow create: if isValidId(docId) && isAdmin() && isValidInventoryData(incoming());
+      allow update: if isValidId(docId) && isAdmin() && isValidInventoryData(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'v', 'locs', 'inv', 'start', 'cut', 'items', 'rows',
+                         'cash', 'cinfo', 'cashiers', 'cpay', 'users', 'log',
+                         'vd', 'vf', 'nc', 'notes', 'updatedAt', 'updatedBy'
+                       ]);
       allow delete: if isValidId(docId) && isAdmin();
     }
 
-    // Audit logs
+    // Audit logs (Admin Firebase users only)
     match /audit_logs/{logId} {
-      allow get: if isValidId(logId);
-      allow list: if isSignedIn();
-      allow create: if isValidId(logId) && isValidAuditLog(incoming());
-      allow update, delete: if isValidId(logId) && isAdmin();
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(logId) && isAdmin() && isValidAuditLog(incoming());
+      allow update: if isValidId(logId) && isAdmin() && isValidAuditLog(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'id', 't', 'u', 'tab', 'act', 'desc', 'date', 'loc'
+                       ]);
+      allow delete: if isValidId(logId) && isAdmin();
     }
 
-    // Active user presence & live concurrency
+    // Live presence is handled exclusively via authenticated server API (/api/presence)
     match /presence/{userId} {
-      allow read: if true;
-      allow list: if true;
-      allow create, update, delete: if isValidId(userId);
+      allow read, write: if false;
     }
   }
 }

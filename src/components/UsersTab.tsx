@@ -18,7 +18,8 @@ import {
   Info
 } from 'lucide-react';
 import { AppState, User } from '../types';
-import { sha256, rnd } from '../utils/helpers';
+import { adminSetUserPassword, adminCreateUser } from '../firebase';
+import { validateClientPassword } from '../utils/helpers';
 import { ChangeHistory } from './ChangeHistory';
 import {
   SYSTEM_TABS,
@@ -281,8 +282,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     setPasswordModalError('');
 
     const pw = newPasswordVal.trim();
-    if (pw.length < 3) {
-      setPasswordModalError('Password must be at least 3 characters.');
+    const pwError = validateClientPassword(pw);
+    if (pwError) {
+      setPasswordModalError(pwError);
       return;
     }
 
@@ -291,19 +293,15 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       return;
     }
 
-    const salt = rnd();
-    const hash = await sha256(salt + pw);
-
-    const updated: User = {
-      ...passwordModalUser,
-      salt,
-      hash
-    };
-
-    setLocalUsers(prev => prev.map(u => (u.id === updated.id ? updated : u)));
-    commitUserUpdate(updated, `Reset password for user "${passwordModalUser.name || passwordModalUser.user}"`);
-    setPasswordModalUser(null);
-    showNotification(`Password successfully updated for ${updated.name || updated.user}!`);
+    try {
+      const updated = await adminSetUserPassword(passwordModalUser.id, pw);
+      setLocalUsers(prev => prev.map(u => (u.id === updated.id ? updated : u)));
+      commitUserUpdate(updated, `Reset password for user "${passwordModalUser.name || passwordModalUser.user}"`);
+      setPasswordModalUser(null);
+      showNotification(`Password successfully updated for ${updated.name || updated.user}!`);
+    } catch (err: any) {
+      setPasswordModalError(err?.message || 'Failed to update password on server.');
+    }
   };
 
   const handleQuickInlinePasswordSave = async (userId: number) => {
@@ -311,27 +309,24 @@ export const UsersTab: React.FC<UsersTabProps> = ({
     if (!rawPw || rawPw.trim().length === 0) return;
 
     const pw = rawPw.trim();
-    if (pw.length < 3) {
-      showNotification('Password must be at least 3 characters.', true);
+    const pwError = validateClientPassword(pw);
+    if (pwError) {
+      showNotification(pwError, true);
       return;
     }
 
     const target = localUsers.find(u => u.id === userId);
     if (!target) return;
 
-    const salt = rnd();
-    const hash = await sha256(salt + pw);
-
-    const updated: User = {
-      ...target,
-      salt,
-      hash
-    };
-
-    setLocalUsers(prev => prev.map(u => (u.id === userId ? updated : u)));
-    commitUserUpdate(updated, `Saved password for ${target.name || target.user}`);
-    setInlinePwDraft(prev => ({ ...prev, [userId]: '' }));
-    showNotification(`Password saved for ${target.name || target.user}!`);
+    try {
+      const updated = await adminSetUserPassword(userId, pw);
+      setLocalUsers(prev => prev.map(u => (u.id === userId ? updated : u)));
+      commitUserUpdate(updated, `Saved password for ${target.name || target.user}`);
+      setInlinePwDraft(prev => ({ ...prev, [userId]: '' }));
+      showNotification(`Password saved for ${target.name || target.user}!`);
+    } catch (err: any) {
+      showNotification(err?.message || 'Failed to save password on server.', true);
+    }
   };
 
   // --- Open Detailed Permissions Modal ---
@@ -420,38 +415,38 @@ export const UsersTab: React.FC<UsersTabProps> = ({
       return;
     }
 
-    if (cleanPw.length < 3) {
-      setAddError('Password must be at least 3 characters.');
+    const pwError = validateClientPassword(cleanPw);
+    if (pwError) {
+      setAddError(pwError);
       return;
     }
 
-    const maxId = state.users.reduce((m, u) => Math.max(m, u.id), 0);
-    const newId = maxId + 1;
-    const salt = rnd();
-    const hash = await sha256(salt + cleanPw);
+    try {
+      const newUser = await adminCreateUser({
+        name: cleanName,
+        user: cleanUser,
+        password: cleanPw,
+        all: addAllLocs,
+        locs: addAllLocs ? [] : addLocs,
+        acc: addAcc.length > 0 ? addAcc : ['View Only'],
+        res: addRes
+      });
 
-    const newUser: User = {
-      id: newId,
-      name: cleanName,
-      user: cleanUser,
-      all: addAllLocs,
-      locs: addAllLocs ? [] : addLocs,
-      acc: addAcc.length > 0 ? addAcc : ['View Only'],
-      res: addRes,
-      salt,
-      hash
-    };
+      onUpdateState(
+        prev => ({
+          ...prev,
+          users: prev.users.some(u => u.id === newUser.id)
+            ? prev.users.map(u => (u.id === newUser.id ? newUser : u))
+            : [...prev.users, newUser]
+        }),
+        `Created new user "${cleanName}" (@${cleanUser})`
+      );
 
-    onUpdateState(
-      prev => ({
-        ...prev,
-        users: [...prev.users, newUser]
-      }),
-      `Created new user "${cleanName}" (@${cleanUser})`
-    );
-
-    setIsAddUserModalOpen(false);
-    showNotification(`User "${cleanName}" created successfully!`);
+      setIsAddUserModalOpen(false);
+      showNotification(`User "${cleanName}" created successfully!`);
+    } catch (err: any) {
+      setAddError(err?.message || 'Failed to create user on server.');
+    }
   };
 
   // --- Handler for Deleting User ---
@@ -1424,7 +1419,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                     value={newPasswordVal}
                     onChange={e => setNewPasswordVal(e.target.value)}
                     required
-                    placeholder="Enter password (min 3 chars)"
+                    minLength={8}
+                    maxLength={128}
+                    placeholder="Min 8 chars (letters + number/symbol)"
                     className="w-full pl-3 pr-10 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600 dark:text-slate-100"
                   />
                   <button
@@ -1568,7 +1565,9 @@ export const UsersTab: React.FC<UsersTabProps> = ({
                   value={addPassword}
                   onChange={e => setAddPassword(e.target.value)}
                   required
-                  placeholder="Minimum 3 characters"
+                  minLength={8}
+                  maxLength={128}
+                  placeholder="Min 8 chars (letters + number/symbol)"
                   className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600"
                 />
               </div>

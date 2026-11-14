@@ -251,15 +251,35 @@ export const ItemMasterTab: React.FC<ItemMasterTabProps> = ({
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+
+    if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
+      setMsg('Invalid file type. Only .xlsx, .xls, or .csv spreadsheets are allowed.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setMsg('Spreadsheet file is too large (max 5 MB).');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = evt => {
       try {
         const data = evt.target?.result;
-        const wb = XLSX.read(data, { type: 'array' });
+        const wb = XLSX.read(data, {
+          type: 'array',
+          cellFormula: false,
+          cellHTML: false,
+          cellStyles: false
+        });
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        const sheetRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        if (!sheet) {
+          setMsg('Spreadsheet contains no worksheets.');
+          return;
+        }
+        const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+        const sheetRows = rawRows.slice(0, 25000);
 
         const result = parseItemImport(sheetRows, state.items);
         if (result.error) {
@@ -281,7 +301,6 @@ export const ItemMasterTab: React.FC<ItemMasterTabProps> = ({
       }
     };
     reader.readAsArrayBuffer(file);
-    e.target.value = '';
   };
 
   return (

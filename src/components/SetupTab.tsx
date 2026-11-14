@@ -789,7 +789,7 @@ export const SetupTab: React.FC<SetupTabProps> = ({
             <a
               href="/WINDOWS-SERVER-INSTALLATION-WALKTHROUGH.html"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium text-xs text-slate-700 dark:text-slate-200 transition-colors shadow-2xs"
             >
               <Printer className="w-3.5 h-3.5 text-slate-500" />

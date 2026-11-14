@@ -117,8 +117,9 @@ export async function addAuditLog(
 }
 
 export async function getRecentAuditLogs(limitCount: number = 50) {
+  const safeLimit = Math.min(Math.max(1, Math.floor(Number(limitCount) || 50)), 200);
   try {
-    return await db.select().from(auditLogs).orderBy(desc(auditLogs.id)).limit(limitCount);
+    return await db.select().from(auditLogs).orderBy(desc(auditLogs.id)).limit(safeLimit);
   } catch (error) {
     console.error('Failed to fetch audit logs:', error);
     throw new Error('Failed to retrieve audit logs.', { cause: error });

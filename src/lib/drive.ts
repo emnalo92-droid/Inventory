@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { AppState } from '../types';
+import { sanitizeAoaForExcel, sanitizeJsonRowsForExcel } from '../utils/excel';
 
 export interface DriveFile {
   id: string;
@@ -18,6 +19,18 @@ export class InsufficientScopeError extends Error {
     super(message);
     this.name = 'InsufficientScopeError';
   }
+}
+
+function escapeDriveQuery(val: string): string {
+  return val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function assertValidDriveId(id: string): string {
+  const clean = String(id || '').trim();
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(clean)) {
+    throw new Error('Invalid Google Drive file identifier.');
+  }
+  return clean;
 }
 
 /**
@@ -40,10 +53,10 @@ export async function listDriveFiles(
 
     let q = 'trashed=false';
     if (folderId) {
-      q += ` and '${folderId}' in parents`;
+      q += ` and '${assertValidDriveId(folderId)}' in parents`;
     }
     if (options?.search && options.search.trim()) {
-      const clean = options.search.trim().replace(/'/g, "\\'");
+      const clean = escapeDriveQuery(options.search.trim().slice(0, 120));
       q += ` and name contains '${clean}'`;
     }
 
@@ -87,9 +100,8 @@ export async function getOrCreateBackupFolder(
 ): Promise<string> {
   try {
     // Check if folder already exists
-    const q = `mimeType='application/vnd.google-apps.folder' and name='${folderName.replace(
-      /'/g,
-      "\\'"
+    const q = `mimeType='application/vnd.google-apps.folder' and name='${escapeDriveQuery(
+      folderName
     )}' and trashed=false`;
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
       q
@@ -154,12 +166,16 @@ export async function backupLedgerToDrive(
   const branchTag = (state.inv || 'Store').replace(/[^a-zA-Z0-9]/g, '_');
   const results: { jsonFile?: DriveFile; excelFile?: DriveFile } = {};
 
-  // 1. JSON Backup
+  // 1. JSON Backup (never export user salts or password hashes)
   if (format === 'json' || format === 'both') {
     const filename = `Inventory_Backup_${branchTag}_${timestamp}.json`;
+    const safeUsers = Array.isArray(state.users)
+      ? state.users.map(u => ({ ...u, salt: '', hash: u.hash ? '__set__' : '' }))
+      : [];
     const jsonContent = JSON.stringify(
       {
         ...state,
+        users: safeUsers,
         exportedAt: new Date().toISOString(),
         version: '1.0'
       },
@@ -217,7 +233,7 @@ export function generateExcelReportBuffer(state: AppState): Uint8Array {
   ];
   (state.locs || []).forEach(loc => overviewData.push(['- ' + loc]));
 
-  const wsOverview = XLSX.utils.aoa_to_sheet(overviewData);
+  const wsOverview = XLSX.utils.aoa_to_sheet(sanitizeAoaForExcel(overviewData));
   XLSX.utils.book_append_sheet(wb, wsOverview, 'Store Overview');
 
   // Items Master Sheet
@@ -234,7 +250,7 @@ export function generateExcelReportBuffer(state: AppState): Uint8Array {
     'Conversion': it.conv,
     'Case Value': it.cv
   }));
-  const wsItems = XLSX.utils.json_to_sheet(itemsRows);
+  const wsItems = XLSX.utils.json_to_sheet(sanitizeJsonRowsForExcel(itemsRows));
   XLSX.utils.book_append_sheet(wb, wsItems, 'Item Master');
 
   // Shift Entries Sheet
@@ -254,7 +270,7 @@ export function generateExcelReportBuffer(state: AppState): Uint8Array {
     'Spoilage / Bad': r.bad,
     'Ending Balance': r.end
   }));
-  const wsRows = XLSX.utils.json_to_sheet(shiftRows);
+  const wsRows = XLSX.utils.json_to_sheet(sanitizeJsonRowsForExcel(shiftRows));
   XLSX.utils.book_append_sheet(wb, wsRows, 'Shift Entries');
 
   // Audit Logs Sheet
@@ -268,7 +284,7 @@ export function generateExcelReportBuffer(state: AppState): Uint8Array {
       'Date': l.date || '',
       'Location': l.loc || ''
     }));
-    const wsLog = XLSX.utils.json_to_sheet(logRows);
+    const wsLog = XLSX.utils.json_to_sheet(sanitizeJsonRowsForExcel(logRows));
     XLSX.utils.book_append_sheet(wb, wsLog, 'Audit History');
   }
 
@@ -370,7 +386,8 @@ async function uploadMultipartBinary(
  * Downloads a text/JSON file's content from Google Drive
  */
 export async function downloadDriveFileContent(token: string, fileId: string): Promise<string> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+  const validId = encodeURIComponent(assertValidDriveId(fileId));
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${validId}?alt=media`, {
     headers: {
       Authorization: `Bearer ${token}`
     }
@@ -387,7 +404,8 @@ export async function downloadDriveFileContent(token: string, fileId: string): P
  * Deletes a file from Google Drive
  */
 export async function deleteDriveFile(token: string, fileId: string): Promise<boolean> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+  const validId = encodeURIComponent(assertValidDriveId(fileId));
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${validId}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`

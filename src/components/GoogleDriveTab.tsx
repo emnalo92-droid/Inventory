@@ -147,6 +147,18 @@ export const GoogleDriveTab: React.FC<GoogleDriveTabProps> = ({
     }
   };
 
+  // Recursively strip dangerous keys to prevent prototype pollution
+  const stripUnsafeKeys = (val: unknown): any => {
+    if (val === null || typeof val !== 'object') return val;
+    if (Array.isArray(val)) return val.map(stripUnsafeKeys);
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      out[k] = stripUnsafeKeys(v);
+    }
+    return out;
+  };
+
   // Restore inventory state from a JSON backup in Google Drive
   const handleRestoreFromDrive = async (file: DriveFile) => {
     if (!accessToken) return;
@@ -156,15 +168,41 @@ export const GoogleDriveTab: React.FC<GoogleDriveTabProps> = ({
       async () => {
         try {
           const content = await downloadDriveFileContent(accessToken, file.id);
-          const parsed = JSON.parse(content) as AppState;
+          const rawParsed = JSON.parse(content);
+          if (!rawParsed || typeof rawParsed !== 'object' || Array.isArray(rawParsed)) {
+            showToast('The selected backup file has an invalid root structure.', true);
+            return;
+          }
+          const parsed = stripUnsafeKeys(rawParsed) as Partial<AppState>;
 
-          if (!parsed.inv || !Array.isArray(parsed.items) || !Array.isArray(parsed.rows)) {
+          if (
+            typeof parsed.inv !== 'string' ||
+            typeof parsed.start !== 'string' ||
+            typeof parsed.cut !== 'string' ||
+            !Array.isArray(parsed.items) ||
+            !Array.isArray(parsed.rows)
+          ) {
             showToast('The selected file does not appear to be a valid inventory backup.', true);
+            return;
+          }
+          if (parsed.items.length > 20000 || parsed.rows.length > 100000) {
+            showToast('Backup file exceeds maximum supported item or row limits.', true);
             return;
           }
 
           onUpdateState(
-            () => parsed,
+            prev => ({
+              ...prev,
+              ...parsed,
+              // Never overwrite live user accounts or credentials from a JSON backup snapshot
+              users: prev.users,
+              locs: Array.isArray(parsed.locs) ? parsed.locs : prev.locs,
+              cash: parsed.cash && typeof parsed.cash === 'object' ? parsed.cash : prev.cash,
+              cinfo: parsed.cinfo && typeof parsed.cinfo === 'object' ? parsed.cinfo : prev.cinfo,
+              cpay: parsed.cpay && typeof parsed.cpay === 'object' ? parsed.cpay : prev.cpay,
+              cashiers: Array.isArray(parsed.cashiers) ? parsed.cashiers : prev.cashiers,
+              log: Array.isArray(parsed.log) ? parsed.log : prev.log,
+            }),
             `Restored ledger state from Google Drive backup: "${file.name}"`
           );
           showToast(`Inventory state restored from "${file.name}" successfully!`);
@@ -569,7 +607,7 @@ export const GoogleDriveTab: React.FC<GoogleDriveTabProps> = ({
                       <td className="py-2.5 px-3 text-right">
                         <div className="inline-flex items-center gap-1.5">
                           {/* Open in Google Drive */}
-                          {file.webViewLink && (
+                          {file.webViewLink && /^https:\/\//i.test(file.webViewLink) && (
                             <a
                               href={file.webViewLink}
                               target="_blank"

@@ -4,19 +4,22 @@ import { eq } from 'drizzle-orm';
 
 export async function getOrCreateUser(uid: string, email: string, name?: string) {
   try {
-    const isOwner = email.toLowerCase() === 'em.nalo92@gmail.com';
+    const cleanUid = String(uid || '').trim().slice(0, 128);
+    const cleanEmail = String(email || '').trim().slice(0, 254);
+    const cleanName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 120) : undefined;
+    const isOwner = cleanEmail.toLowerCase() === 'em.nalo92@gmail.com';
     const result = await db.insert(users)
       .values({
-        uid,
-        email,
-        name: name || (isOwner ? 'Ervin Nalo' : null),
+        uid: cleanUid,
+        email: cleanEmail,
+        name: cleanName || (isOwner ? 'Ervin Nalo' : null),
         role: isOwner ? 'Owner' : 'Staff',
       })
       .onConflictDoUpdate({
         target: users.uid,
         set: {
-          email,
-          ...(name ? { name } : {}),
+          email: cleanEmail,
+          ...(cleanName ? { name: cleanName } : {}),
           ...(isOwner ? { role: 'Owner' } : {}),
         },
       })
